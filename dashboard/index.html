@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TraceView — iOS Real-time App Observability & Performance Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #111318;
+      color: #e2e8f0; 
+      font-family: 'Inter', -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+
+    .header {
+      padding: 0 24px; 
+      background: #1c1f26;
+      border-bottom: 1px solid #2d3139;
+      display: flex; align-items: center; gap: 16px;
+      height: 56px;
+    }
+    .header-brand {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .header-logo {
+      width: 28px; height: 28px; border-radius: 7px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800; color: #fff;
+      letter-spacing: -1px;
+    }
+    .header-title {
+      font-size: 17px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px;
+    }
+    .header-subtitle {
+      font-size: 10px; color: #475569; margin-top: 1px; letter-spacing: 0.2px;
+    }
+    .header-divider {
+      width: 1px; height: 28px; background: #2d3139; margin: 0 4px;
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #ef4444; transition: all 0.3s; flex-shrink: 0; }
+    .status-dot.connected { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .health-ring { position: relative; width: 56px; height: 56px; }
+    .health-ring canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+    .health-score-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 12px; font-weight: 700; }
+
+    .tabs { display: flex; gap: 2px; padding: 12px 16px 0; }
+    .tab { 
+      padding: 8px 18px; border-radius: 8px 8px 0 0; font-size: 12px; font-weight: 500; cursor: pointer; 
+      background: #1c1f26; color: #64748b; 
+      border: 1px solid #2d3139; border-bottom: none;
+      transition: all 0.15s;
+    }
+    .tab:hover { color: #94a3b8; }
+    .tab.active { background: #111318; color: #f1f5f9; border-color: #3d4149; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px; }
+    .card { 
+      background: #1c1f26;
+      border-radius: 10px; padding: 14px; 
+      border: 1px solid #2d3139;
+    }
+    .card-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 500; }
+    .card-value { font-size: 24px; font-weight: 700; margin: 5px 0 3px; letter-spacing: -0.5px; }
+    .card-sub { font-size: 10px; color: #475569; }
+    .card-value.green  { color: #22c55e; }
+    .card-value.yellow { color: #f59e0b; }
+    .card-value.red    { color: #ef4444; }
+
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 14px 14px; }
+    .chart-card { background: #1c1f26; border-radius: 10px; padding: 14px; border: 1px solid #2d3139; }
+    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .chart-title { font-size: 11px; color: #94a3b8; font-weight: 600; letter-spacing: 0.3px; }
+    .chart-stats { display: flex; gap: 12px; font-size: 10px; }
+    .stat-min { color: #22c55e; } .stat-max { color: #ef4444; } .stat-avg { color: #f59e0b; }
+
+    .ram-section { padding: 0 14px 14px; }
+    .ram-bar-wrap { height: 18px; background: #0d0f13; border-radius: 9px; overflow: hidden; display: flex; }
+    .ram-labels { display: flex; gap: 16px; margin-top: 8px; font-size: 10px; color: #94a3b8; }
+
+    .bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 14px 14px; }
+    .section-card { background: #1c1f26; border-radius: 10px; padding: 14px; border: 1px solid #2d3139; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .section-title { font-size: 11px; color: #94a3b8; font-weight: 600; letter-spacing: 0.3px; }
+    .export-btn { 
+      padding: 4px 10px; background: #1e293b; border: 1px solid #334155; 
+      border-radius: 6px; color: #94a3b8; font-size: 10px; cursor: pointer;
+      font-family: 'Inter', sans-serif; font-weight: 500;
+      transition: all 0.15s;
+    }
+    .export-btn:hover { background: #273449; color: #cbd5e1; }
+
+    .screen-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+    .screen-item { 
+      display: flex; justify-content: space-between; align-items: center; 
+      padding: 7px 10px; background: #161920; border-radius: 7px; 
+      font-size: 11px; flex-wrap: wrap; gap: 4px;
+      border: 1px solid #252830;
+    }
+    .screen-name { color: #e2e8f0; flex: 1; font-weight: 500; }
+    .screen-time { color: #334155; font-size: 10px; }
+    .screen-badges { display: flex; gap: 5px; align-items: center; }
+    .badge { font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 4px; }
+    .badge-label { font-size: 9px; color: #475569; }
+    .badge-green  { background: rgba(34,197,94,0.1); color: #22c55e; }
+    .badge-yellow { background: rgba(245,158,11,0.1); color: #f59e0b; }
+    .badge-red    { background: rgba(239,68,68,0.1); color: #ef4444; }
+    .badge-blue   { background: rgba(99,102,241,0.1); color: #818cf8; }
+
+    .event-list { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+    .event-item { 
+      display: flex; gap: 8px; align-items: center; font-size: 11px; 
+      padding: 5px 0; border-bottom: 1px solid #1e2128;
+    }
+    .event-type { padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 600; min-width: 65px; text-align: center; }
+    .event-type.screen  { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .event-type.network { background: rgba(34,197,94,0.12); color: #22c55e; }
+    .event-type.error   { background: rgba(239,68,68,0.12); color: #ef4444; }
+    .event-type.tap     { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .event-type.event   { background: rgba(100,116,139,0.12); color: #94a3b8; }
+
+    /* Network table */
+    .net-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .net-table th { text-align: left; padding: 8px 10px; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid #2d3139; font-weight: 500; }
+    .net-table td { padding: 8px 10px; border-bottom: 1px solid #1e2128; color: #94a3b8; }
+    .net-table tr:hover td { background: #1c1f26; }
+    .method { padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; }
+    .method-GET    { background: rgba(34,197,94,0.12); color: #22c55e; }
+    .method-POST   { background: rgba(99,102,241,0.12); color: #818cf8; }
+    .method-PUT    { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .method-DELETE { background: rgba(239,68,68,0.12); color: #ef4444; }
+    .status-ok   { color: #22c55e; font-weight: 600; }
+    .status-err  { color: #ef4444; font-weight: 600; }
+    .status-warn { color: #f59e0b; font-weight: 600; }
+    .dur-fast { color: #22c55e; }
+    .dur-med  { color: #f59e0b; }
+    .dur-slow { color: #ef4444; }
+    .net-wrap { padding: 14px; max-height: 500px; overflow-y: auto; }
+    .net-stats { display: flex; gap: 10px; padding: 0 14px 12px; flex-wrap: wrap; }
+    .net-stat { background: #1c1f26; border-radius: 8px; padding: 10px 16px; border: 1px solid #2d3139; }
+    .net-stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 500; }
+    .net-stat-val { font-size: 18px; font-weight: 700; margin-top: 3px; letter-spacing: -0.5px; }
+
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3139; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-brand">
+    <div class="header-logo">TV</div>
+    <div>
+      <div class="header-title" id="headerTitle">TraceView</div>
+      <div class="header-subtitle">iOS Real-time App Observability</div>
+    </div>
+  </div>
+  <div class="header-divider"></div>
+  <div class="status-dot" id="statusDot"></div>
+  <span id="statusText" style="font-size:11px;color:#64748b">Waiting for app...</span>
+  <span id="appName" style="font-size:11px;color:#94a3b8;background:#1e2128;padding:3px 10px;border-radius:20px;border:1px solid #2d3139"></span>
+  <div class="header-right">
+    <div style="text-align:right">
+      <div style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px">Health</div>
+      <div style="font-size:9px;color:#475569" id="healthLabel">--</div>
+    </div>
+    <div class="health-ring">
+      <canvas id="healthRing" width="56" height="56"></canvas>
+      <span class="health-score-text" id="healthScore">--</span>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('overview')">Overview</div>
+  <div class="tab" onclick="switchTab('network')">Network <span id="netBadge" style="background:#1e293b;padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></div>
+  <div class="tab" onclick="switchTab('crashes')">Crashes <span id="crashBadge" style="background:#1e293b;padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></div>
+</div>
+
+<!-- Overview Tab -->
+<div id="tab-overview" class="tab-content active">
+<div class="grid">
+  <div class="card">
+    <div class="card-label">App Memory</div>
+    <div class="card-value green" id="memVal">--</div>
+    <div class="card-sub" id="memPeak">Peak: --</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Device RAM</div>
+    <div class="card-value" id="ramVal" style="font-size:16px;color:#fff;margin-top:4px">--</div>
+    <div class="card-sub" id="ramFree">Free: --</div>
+  </div>
+  <div class="card">
+    <div class="card-label">CPU</div>
+    <div class="card-value green" id="cpuVal">--</div>
+    <div class="card-sub" id="cpuAvgSub">Avg: --</div>
+  </div>
+  <div class="card">
+    <div class="card-label">FPS</div>
+    <div class="card-value green" id="fpsVal">--</div>
+    <div class="card-sub">frames/sec</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Current Screen</div>
+    <div class="card-value" id="screenVal" style="font-size:13px;color:#fff;margin-top:4px">--</div>
+    <div class="card-sub" id="screenTime"></div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="charts">
+  <div class="chart-card">
+    <div class="chart-header">
+      <span class="chart-title">App Memory (MB)</span>
+      <div class="chart-stats">
+        <span class="stat-min" id="memMin">Min: --</span>
+        <span class="stat-avg" id="memAvg">Avg: --</span>
+        <span class="stat-max" id="memMax">Max: --</span>
+      </div>
+    </div>
+    <canvas id="memoryChart" height="100"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-header">
+      <span class="chart-title">CPU Usage (%)</span>
+      <div class="chart-stats">
+        <span class="stat-min" id="cpuMin">Min: --</span>
+        <span class="stat-avg" id="cpuAvg2">Avg: --</span>
+        <span class="stat-max" id="cpuMax">Max: --</span>
+      </div>
+    </div>
+    <canvas id="cpuChart" height="100"></canvas>
+  </div>
+</div>
+
+<!-- RAM Breakdown -->
+<div class="ram-section">
+  <div class="chart-card">
+    <div class="chart-header">
+      <span class="chart-title">Device RAM Breakdown</span>
+      <span id="ramTotal" style="font-size:11px;color:#888"></span>
+    </div>
+    <div class="ram-bar-wrap">
+      <div id="ramAppBar"  style="background:#00e676;transition:width 0.5s;"></div>
+      <div id="ramUsedBar" style="background:#ffd740;transition:width 0.5s;"></div>
+      <div id="ramFreeBar" style="background:#2a2a3a;transition:width 0.5s;"></div>
+    </div>
+    <div class="ram-labels">
+      <span><span style="color:#00e676">■</span> This App: <span id="ramAppLabel">--</span></span>
+      <span><span style="color:#ffd740">■</span> Other: <span id="ramOtherLabel">--</span></span>
+      <span><span style="color:#555">■</span> Free: <span id="ramFreeLabel">--</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- Screen Transitions + Event Log -->
+<div class="bottom">
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">Screen Transitions</span>
+      <span style="font-size:10px;color:#555">⏱ loading time &nbsp; 🕐 stayed time</span>
+    </div>
+    <div class="screen-list" id="screenList"></div>
+  </div>
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">Event Log</span>
+      <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+    </div>
+    <div class="event-list" id="eventList"></div>
+  </div>
+</div>
+</div>
+
+<!-- Network Tab -->
+<div id="tab-network" class="tab-content">
+  <div class="net-stats">
+    <div class="net-stat"><div class="net-stat-label">Total Requests</div><div class="net-stat-val" id="netTotal">0</div></div>
+    <div class="net-stat"><div class="net-stat-label">Avg Response</div><div class="net-stat-val" id="netAvg">--</div></div>
+    <div class="net-stat"><div class="net-stat-label">Slowest</div><div class="net-stat-val" id="netSlowest" style="color:#ff5252">--</div></div>
+    <div class="net-stat"><div class="net-stat-label">Errors</div><div class="net-stat-val" id="netErrors" style="color:#ff5252">0</div></div>
+    <div class="net-stat" style="margin-left:auto">
+      <div class="net-stat-label">Export</div>
+      <button class="export-btn" style="margin-top:4px" onclick="exportNetworkCSV()">⬇ CSV</button>
+    </div>
+  </div>
+  <div class="net-wrap">
+    <table class="net-table">
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>URL</th>
+          <th>Status</th>
+          <th>Duration</th>
+          <th>Size</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="netTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Crashes Tab -->
+<div id="tab-crashes" class="tab-content">
+  <div class="net-stats">
+    <div class="net-stat"><div class="net-stat-label">Total Crashes</div><div class="net-stat-val" id="crashTotal" style="color:#ef4444">0</div></div>
+    <div class="net-stat"><div class="net-stat-label">Exceptions</div><div class="net-stat-val" id="crashExceptions">0</div></div>
+    <div class="net-stat"><div class="net-stat-label">Signals</div><div class="net-stat-val" id="crashSignals">0</div></div>
+    <div class="net-stat"><div class="net-stat-label">ANRs</div><div class="net-stat-val" id="crashANRs" style="color:#f59e0b">0</div></div>
+    <div class="net-stat" style="margin-left:auto">
+      <div class="net-stat-label">Export</div>
+      <button class="export-btn" style="margin-top:4px" onclick="exportCrashCSV()">⬇ CSV</button>
+    </div>
+  </div>
+  <div class="net-wrap">
+    <div id="crashList" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </div>
+</div>
+
+<script>
+  const MAX = 60;
+  const memHistory = [], cpuHistory = [];
+  const screenTransitions = [];
+  const allEvents = [];
+  let peakMem = 0;
+  let screenCount = 0;
+
+  // ── Charts ──────────────────────────────────────────────────────────────────
+  function makeChart(id, color, maxY) {
+    return new Chart(document.getElementById(id), {
+      type: 'line',
+      data: {
+        labels: Array(MAX).fill(''),
+        datasets: [{ data: Array(MAX).fill(null), borderColor: color,
+          backgroundColor: color.replace('rgb','rgba').replace(')',',0.1)'),
+          borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 }]
+      },
+      options: {
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { max: maxY, grid: { color: '#1e2128' }, ticks: { color: '#475569', font: { size: 10, family: 'Inter' } } }
+        }
+      }
+    });
+  }
+  const memChart = makeChart('memoryChart', 'rgb(34,197,94)', undefined);
+  const cpuChart = makeChart('cpuChart', 'rgb(99,102,241)', 100);
+
+  // ── Health Ring ──────────────────────────────────────────────────────────────
+  const healthChart = new Chart(document.getElementById('healthRing').getContext('2d'), {
+    type: 'doughnut',
+    data: { datasets: [{ data: [0,100], backgroundColor: ['#22c55e','#1e2128'], borderWidth: 0 }] },
+    options: { cutout: '78%', animation: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+  });
+
+  function updateHealth(score) {
+    const color = score >= 80 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
+    const label = score >= 80 ? 'Good' : score >= 50 ? 'Fair' : 'Poor';
+    healthChart.data.datasets[0].data = [score, 100 - score];
+    healthChart.data.datasets[0].backgroundColor[0] = color;
+    healthChart.update();
+    const el = document.getElementById('healthScore');
+    el.textContent = score;
+    el.style.color = color;
+    document.getElementById('healthLabel').textContent = label;
+    document.getElementById('healthLabel').style.color = color;
+  }
+
+  // ── WebSocket ────────────────────────────────────────────────────────────────
+  const ws = new WebSocket(`ws://${location.host}?type=dashboard`);
+  ws.onopen  = () => { document.getElementById('statusDot').classList.add('connected'); document.getElementById('statusText').textContent = 'Dashboard ready'; };
+  ws.onclose = () => { document.getElementById('statusDot').classList.remove('connected'); document.getElementById('statusText').textContent = 'Disconnected'; };
+  ws.onmessage = e => handleMetric(JSON.parse(e.data));
+
+  function handleMetric(msg) {
+    document.getElementById('statusText').textContent = 'Live ●';
+    if (msg.appName) {
+      document.getElementById('appName').textContent = msg.appName;
+      document.getElementById('headerTitle').textContent = 'TraceView';
+      document.title = `TraceView — ${msg.appName}`;
+    }
+    if (msg.type === 'metrics') updateMetrics(msg);
+    else if (msg.type === 'screen') updateScreen(msg);
+    else if (msg.type === 'network') handleNetwork(msg);
+    else if (msg.type === 'crash' || msg.type === 'anr') handleCrash(msg);
+    else if (msg.type === 'event') addEvent(msg.eventType || 'event', msg.name);
+  }
+
+  // ── Metrics ──────────────────────────────────────────────────────────────────
+  function updateMetrics(msg) {
+    const appMem   = msg.appMemory ?? 0;
+    const totalRAM = msg.totalRAM  ?? 0;
+    const usedRAM  = msg.usedRAM   ?? 0;
+    const freeRAM  = msg.freeRAM   ?? 0;
+    const otherRAM = Math.max(0, usedRAM - appMem);
+    const cpu = msg.cpu ?? 0;
+    const fps = msg.fps ?? 60;
+
+    // Rolling history
+    memHistory.push(appMem); if (memHistory.length > MAX) memHistory.shift();
+    cpuHistory.push(cpu);    if (cpuHistory.length > MAX) cpuHistory.shift();
+
+    memChart.data.datasets[0].data = [...Array(MAX - memHistory.length).fill(null), ...memHistory];
+    cpuChart.data.datasets[0].data = [...Array(MAX - cpuHistory.length).fill(null), ...cpuHistory];
+    memChart.update(); cpuChart.update();
+
+    // Stats
+    const memMin = Math.min(...memHistory).toFixed(1);
+    const memMax = Math.max(...memHistory).toFixed(1);
+    const memAvg = (memHistory.reduce((a,b)=>a+b,0)/memHistory.length).toFixed(1);
+    const cpuMin = Math.min(...cpuHistory).toFixed(1);
+    const cpuMax = Math.max(...cpuHistory).toFixed(1);
+    const cpuAvg = (cpuHistory.reduce((a,b)=>a+b,0)/cpuHistory.length).toFixed(1);
+
+    document.getElementById('memMin').textContent  = `Min: ${memMin}`;
+    document.getElementById('memAvg').textContent  = `Avg: ${memAvg}`;
+    document.getElementById('memMax').textContent  = `Max: ${memMax}`;
+    document.getElementById('cpuMin').textContent  = `Min: ${cpuMin}`;
+    document.getElementById('cpuAvg2').textContent = `Avg: ${cpuAvg}`;
+    document.getElementById('cpuMax').textContent  = `Max: ${cpuMax}`;
+
+    if (appMem > peakMem) peakMem = appMem;
+    document.getElementById('memPeak').textContent   = `Peak: ${peakMem.toFixed(1)} MB`;
+    document.getElementById('cpuAvgSub').textContent = `Avg: ${cpuAvg}%`;
+
+    setCard('memVal', appMem.toFixed(1), appMem > 200 ? 'red' : appMem > 100 ? 'yellow' : 'green');
+    setCard('cpuVal', cpu.toFixed(1),    cpu > 80 ? 'red' : cpu > 50 ? 'yellow' : 'green');
+    setCard('fpsVal', fps.toFixed(0),    fps < 30 ? 'red' : fps < 50 ? 'yellow' : 'green');
+
+    // Device RAM card
+    if (totalRAM > 0) {
+      document.getElementById('ramVal').textContent  = `${usedRAM.toFixed(0)} / ${totalRAM.toFixed(0)} MB`;
+      document.getElementById('ramFree').textContent = `Free: ${freeRAM.toFixed(0)} MB`;
+      document.getElementById('ramTotal').textContent = `Total: ${totalRAM.toFixed(0)} MB`;
+
+      const appPct   = (appMem   / totalRAM * 100).toFixed(1);
+      const otherPct = (otherRAM / totalRAM * 100).toFixed(1);
+      const freePct  = (freeRAM  / totalRAM * 100).toFixed(1);
+      document.getElementById('ramAppBar').style.width   = `${appPct}%`;
+      document.getElementById('ramUsedBar').style.width  = `${otherPct}%`;
+      document.getElementById('ramFreeBar').style.width  = `${freePct}%`;
+      document.getElementById('ramAppLabel').textContent   = `${appMem.toFixed(0)} MB (${appPct}%)`;
+      document.getElementById('ramOtherLabel').textContent = `${otherRAM.toFixed(0)} MB`;
+      document.getElementById('ramFreeLabel').textContent  = `${freeRAM.toFixed(0)} MB`;
+    }
+
+    // Health score
+    const memRatio = totalRAM > 0 ? appMem / totalRAM : appMem / 1000;
+    let score = 100;
+    if (memRatio > 0.4)      score -= 35;
+    else if (memRatio > 0.2) score -= 15;
+    else if (memRatio > 0.1) score -= 5;
+    if (cpu > 80)      score -= 30;
+    else if (cpu > 50) score -= 15;
+    else if (cpu > 30) score -= 5;
+    if (fps < 30)      score -= 20;
+    else if (fps < 50) score -= 10;
+    const avgLoad = screenTransitions.length
+      ? screenTransitions.reduce((a,b) => a + (b.transitionMs || 0), 0) / screenTransitions.length : 0;
+    if (avgLoad > 1000)     score -= 15;
+    else if (avgLoad > 500) score -= 7;
+    updateHealth(Math.max(0, Math.round(score)));
+  }
+
+  function setCard(id, val, color) {
+    const el = document.getElementById(id);
+    el.textContent = val;
+    el.className = `card-value ${color}`;
+  }
+
+  // ── Screen Transitions ───────────────────────────────────────────────────────
+  function updateScreen(msg) {
+    screenCount++;
+    document.getElementById('screenVal').textContent = msg.name;
+    document.getElementById('screenTime').textContent = new Date().toLocaleTimeString();
+
+    screenTransitions.unshift({
+      name: msg.name,
+      time: new Date().toLocaleTimeString(),
+      transitionMs: msg.transitionMs ?? null,   // loading time (viewDidLoad → viewDidAppear)
+      dwellMs: msg.dwellMs ?? null               // time stayed on previous screen
+    });
+    if (screenTransitions.length > 30) screenTransitions.pop();
+
+    renderScreenList();
+    addEvent('screen', `→ ${msg.name}${msg.transitionMs ? ` (load: ${msg.transitionMs}ms)` : ''}`);
+  }
+
+  function renderScreenList() {
+    document.getElementById('screenList').innerHTML = screenTransitions.map(s => {
+      // Loading time badge — lower is better
+      let loadBadge = '';
+      if (s.transitionMs !== null) {
+        const cls = s.transitionMs < 300 ? 'badge-green' : s.transitionMs < 800 ? 'badge-yellow' : 'badge-red';
+        loadBadge = `<span><span class="badge-label">⏱ loading </span><span class="badge ${cls}">${fmt(s.transitionMs)}</span></span>`;
+      }
+      // Stayed time badge — neutral info
+      let dwellBadge = '';
+      if (s.dwellMs !== null && s.dwellMs > 0) {
+        dwellBadge = `<span><span class="badge-label">🕐 stayed </span><span class="badge badge-blue">${fmt(s.dwellMs)}</span></span>`;
+      }
+      return `<div class="screen-item">
+        <span class="screen-name">${s.name}</span>
+        <span class="screen-time">${s.time}</span>
+        <div class="screen-badges">${loadBadge}${dwellBadge}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function fmt(ms) { return ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`; }
+
+  // ── Event Log ────────────────────────────────────────────────────────────────
+  function addEvent(type, name) {
+    const time = new Date().toLocaleTimeString();
+    allEvents.unshift({ type, name, time, timestamp: new Date().toISOString() });
+    if (allEvents.length > 200) allEvents.pop();
+    document.getElementById('eventList').innerHTML = allEvents.slice(0, 50).map(e => `
+      <div class="event-item">
+        <span class="event-type ${e.type}">${e.type}</span>
+        <span style="color:#ccc">${e.name}</span>
+        <span style="margin-left:auto;color:#444;font-size:10px">${e.time}</span>
+      </div>`).join('');
+  }
+
+  // ── Crashes & ANR ────────────────────────────────────────────────────────────
+  const crashes = [];
+
+  function handleCrash(msg) {
+    const isCrash = msg.type === 'crash';
+    const isANR = msg.type === 'anr';
+
+    const entry = {
+      type: isCrash ? msg.crashType : 'anr',
+      name: isCrash ? msg.name : `ANR on ${msg.screen || 'unknown'}`,
+      reason: isCrash ? msg.reason : `Main thread blocked for ${msg.duration}ms`,
+      stackTrace: msg.stackTrace || '',
+      time: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString()
+    };
+
+    crashes.unshift(entry);
+    updateCrashStats();
+    renderCrashes();
+
+    // Flash crash badge red
+    const badge = document.getElementById('crashBadge');
+    badge.textContent = crashes.length;
+    badge.style.background = '#ef4444';
+
+    // Also add to event log
+    addEvent(isANR ? 'error' : 'error', `${entry.name}: ${entry.reason}`);
+  }
+
+  function updateCrashStats() {
+    document.getElementById('crashTotal').textContent = crashes.length;
+    document.getElementById('crashExceptions').textContent = crashes.filter(c => c.type === 'exception').length;
+    document.getElementById('crashSignals').textContent = crashes.filter(c => c.type === 'signal').length;
+    document.getElementById('crashANRs').textContent = crashes.filter(c => c.type === 'anr').length;
+  }
+
+  function renderCrashes() {
+    document.getElementById('crashList').innerHTML = crashes.map(c => {
+      const isANR = c.type === 'anr';
+      const color = isANR ? '#f59e0b' : '#ef4444';
+      const bg = isANR ? 'rgba(245,158,11,0.05)' : 'rgba(239,68,68,0.05)';
+      const border = isANR ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)';
+      return `<div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="color:${color};font-weight:600;font-size:13px">${isANR ? '⚠️ ANR' : '💥 CRASH'} — ${c.name}</span>
+          <span style="color:#475569;font-size:11px">${c.time}</span>
+        </div>
+        <div style="color:#94a3b8;font-size:12px;margin-bottom:${c.stackTrace ? '10px' : '0'}">${c.reason}</div>
+        ${c.stackTrace ? `<pre style="color:#64748b;font-size:10px;font-family:monospace;overflow-x:auto;background:#0d0f13;padding:10px;border-radius:6px;margin:0">${c.stackTrace}</pre>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function exportCrashCSV() {
+    const rows = [['Timestamp','Type','Name','Reason','StackTrace']];
+    crashes.forEach(c => rows.push([c.timestamp, c.type, c.name, c.reason, c.stackTrace.replace(/\n/g,' | ')]));
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `crashes-${Date.now()}.csv`;
+    a.click();
+  }
+
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['overview','network','crashes'][i] === name));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.getElementById(`tab-${name}`).classList.add('active');
+  }
+
+  // ── Network calls ────────────────────────────────────────────────────────────
+  const networkCalls = [];
+
+  function handleNetwork(msg) {
+    const call = {
+      method: msg.method || 'GET',
+      url: msg.url || '',
+      status: msg.status || 0,
+      duration: msg.duration || 0,
+      size: msg.size || 0,
+      action: msg.action || '',
+      time: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString()
+    };
+    networkCalls.unshift(call);
+    if (networkCalls.length > 200) networkCalls.pop();
+
+    updateNetworkStats();
+    renderNetworkTable();
+
+    // Update badge
+    document.getElementById('netBadge').textContent = networkCalls.length;
+  }
+
+  function updateNetworkStats() {
+    const total = networkCalls.length;
+    const avg = total ? Math.round(networkCalls.reduce((a,b) => a + b.duration, 0) / total) : 0;
+    const slowest = total ? Math.max(...networkCalls.map(c => c.duration)) : 0;
+    const errors = networkCalls.filter(c => c.status >= 400 || c.status === 0).length;
+
+    document.getElementById('netTotal').textContent   = total;
+    document.getElementById('netAvg').textContent     = avg ? `${avg}ms` : '--';
+    document.getElementById('netSlowest').textContent = slowest ? `${slowest}ms` : '--';
+    document.getElementById('netErrors').textContent  = errors;
+  }
+
+  function renderNetworkTable() {
+    document.getElementById('netTableBody').innerHTML = networkCalls.map(c => {
+      const methodCls = `method-${c.method}`;
+      const statusCls = c.status >= 500 ? 'status-err' : c.status >= 400 ? 'status-warn' : c.status >= 200 ? 'status-ok' : 'status-warn';
+      const durCls = c.duration < 300 ? 'dur-fast' : c.duration < 1000 ? 'dur-med' : 'dur-slow';
+      const sizeStr = c.size > 1024 ? `${(c.size/1024).toFixed(1)}KB` : `${c.size}B`;
+
+      // Parse URL to show host + path separately
+      let host = '', path = c.url, query = '';
+      try {
+        const u = new URL(c.url);
+        host = u.hostname;
+        path = u.pathname;
+        query = u.search;
+      } catch(e) {}
+
+      return `<tr>
+        <td><span class="method ${methodCls}">${c.method}</span></td>
+        <td style="max-width:280px">
+          <div style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.url}">${c.action ? c.action : path}</div>
+          <div style="color:#475569;font-size:10px;margin-top:2px">${host}${c.action ? '<span style="color:#334155"> · '+path+'</span>' : ''}</div>
+        </td>
+        <td class="${statusCls}">${c.status || 'ERR'}</td>
+        <td class="${durCls}" style="font-weight:500">${c.duration}ms</td>
+        <td style="color:#475569">${sizeStr}</td>
+        <td style="color:#334155">${c.time}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function exportNetworkCSV() {
+    const rows = [['Timestamp','Method','URL','Status','Duration(ms)','Size(bytes)']];
+    networkCalls.forEach(c => rows.push([c.timestamp, c.method, c.url, c.status, c.duration, c.size]));
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `network-${Date.now()}.csv`;
+    a.click();
+  }
+
+  function exportCSV() {
+    const rows = [['Timestamp','Type','Event']];
+    allEvents.forEach(e => rows.push([e.timestamp, e.type, e.name]));
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `dashboard-${Date.now()}.csv`;
+    a.click();
+  }
+</script>
+</body>
+</html>
