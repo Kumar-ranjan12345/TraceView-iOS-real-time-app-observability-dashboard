@@ -1,5 +1,6 @@
 import UIKit
 import Foundation
+import SystemConfiguration
 
 // ─── AppDashboard ─────────────────────────────────────────────────────────────
 // Drop into any iOS project. Call AppDashboard.shared.start() in AppDelegate.
@@ -10,7 +11,7 @@ class AppDashboard: NSObject {
 
     private var ws: URLSessionWebSocketTask?
     private var timer: Timer?
-    private var currentScreen = ""
+    var currentScreen = ""
     private var screenAppearTime: Date?
     private var screenLoadStartTime: Date?
     
@@ -36,15 +37,27 @@ class AppDashboard: NSObject {
     private override init() { super.init() }
 
     func start() {
+        let launchStart = Date()
         connect()
         startMetricsTimer()
         startFPSTracking()
         startANRDetection()
         setupCrashReporting()
+        setupMemoryWarning()
+        setupTapTracking()
+        setupConsoleCapture()
+        setupNotificationLog()
         swizzleViewControllers()
         URLProtocol.registerClass(DashboardURLProtocol.self)
         UIDevice.current.isBatteryMonitoringEnabled = true
-        print("⚡ TraceView started")
+
+        DispatchQueue.main.async {
+            let launchMs = Int(Date().timeIntervalSince(launchStart) * 1000)
+            self.send(["type": "launch", "launchMs": launchMs, "networkType": self.networkType()])
+            self.sendUserDefaults()
+            self.sendVCStack()
+            print("⚡ TraceView started — launch: \(launchMs)ms")
+        }
     }
 
     // ── WebSocket ─────────────────────────────────────────────────────────────
@@ -132,8 +145,13 @@ class AppDashboard: NSObject {
                 // App info
                 "appName": Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "App",
                 "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
+                "appBuild": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "",
+                "bundleID": Bundle.main.bundleIdentifier ?? "",
                 "iosVersion": device.systemVersion,
-                "deviceModel": device.model
+                "deviceModel": device.model,
+                "deviceName": device.name,
+                "isSimulator": ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil,
+                "networkType": self.networkType()
             ])
         }
     }
@@ -158,7 +176,156 @@ class AppDashboard: NSObject {
         }
     }
 
-    // ── Crash Reporting ───────────────────────────────────────────────────────
+    // ── Tap Tracking ──────────────────────────────────────────────────────────
+    private func setupTapTracking() {
+        DispatchQueue.main.async {
+            // Swizzle sendEvent to intercept all touches
+            let original = class_getInstanceMethod(UIApplication.self, #selector(UIApplication.sendEvent(_:)))
+            let swizzled = class_getInstanceMethod(UIApplication.self, #selector(UIApplication.tv_sendEvent(_:)))
+            if let o = original, let s = swizzled {
+                method_exchangeImplementations(o, s)
+            }
+        }
+    }
+
+    // Called by swizzled sendEvent
+    func trackTap(x: CGFloat, y: CGFloat, screen: String) {
+        let screenSize = UIScreen.main.bounds
+        let nx = Double(x / screenSize.width)
+        let ny = Double(y / screenSize.height)
+        send([
+            "type": "tap",
+            "x": nx,
+            "y": ny,
+            "screen": screen,
+            "rawX": Double(x),
+            "rawY": Double(y)
+        ])
+    }
+
+    // ── Console Log Capture ───────────────────────────────────────────────────
+    // Redirects print() output to dashboard by swizzling stderr/stdout
+    private func setupConsoleCapture() {
+        // Use a pipe to capture stdout
+        let pipe = Pipe()
+        let originalStdout = dup(STDOUT_FILENO)
+        dup2(pipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
+
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let str = String(data: data, encoding: .utf8) else { return }
+
+            // Restore to original so Xcode still shows logs
+            let msg = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !msg.isEmpty else { return }
+
+            // Write back to original stdout (Xcode console)
+            write(originalStdout, str, str.utf8.count)
+
+            // Send to dashboard
+            self?.send([
+                "type": "console",
+                "message": msg,
+                "level": msg.lowercased().contains("error") ? "error" :
+                          msg.lowercased().contains("warn") ? "warn" : "log"
+            ])
+        }
+    }
+
+    // ── UserDefaults Inspector ────────────────────────────────────────────────
+    func sendUserDefaults() {
+        let defaults = UserDefaults.standard.dictionaryRepresentation()
+        // Filter out system keys, keep app keys
+        let appKeys = defaults.filter { key, _ in
+            !key.hasPrefix("NS") && !key.hasPrefix("Apple") &&
+            !key.hasPrefix("com.apple") && !key.hasPrefix("AK")
+        }
+        let simplified = appKeys.mapValues { value -> String in
+            if let str = value as? String { return str }
+            if let num = value as? NSNumber { return num.stringValue }
+            if let bool = value as? Bool { return bool ? "true" : "false" }
+            return "\(value)"
+        }
+        send(["type": "userDefaults", "data": simplified])
+    }
+
+    // ── VC Stack ──────────────────────────────────────────────────────────────
+    func sendVCStack() {
+        guard let rootVC = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first?.windows.first?.rootViewController else { return }
+
+        var stack: [String] = []
+        func traverse(_ vc: UIViewController, depth: Int) {
+            let indent = String(repeating: "  ", count: depth)
+            stack.append("\(indent)\(type(of: vc))")
+            if let nav = vc as? UINavigationController {
+                nav.viewControllers.forEach { traverse($0, depth: depth + 1) }
+            } else if let tab = vc as? UITabBarController {
+                tab.viewControllers?.forEach { traverse($0, depth: depth + 1) }
+            } else if let presented = vc.presentedViewController {
+                traverse(presented, depth: depth + 1)
+            }
+        }
+        traverse(rootVC, depth: 0)
+        send(["type": "vcStack", "stack": stack])
+    }
+
+    // ── Notification Log ──────────────────────────────────────────────────────
+    private func setupNotificationLog() {
+        // Swizzle NotificationCenter.post to capture all notifications
+        let original = class_getInstanceMethod(NotificationCenter.self,
+            #selector(NotificationCenter.post(name:object:userInfo:)))
+        let swizzled = class_getInstanceMethod(NotificationCenter.self,
+            #selector(NotificationCenter.tv_post(name:object:userInfo:)))
+        if let o = original, let s = swizzled {
+            method_exchangeImplementations(o, s)
+        }
+    }
+
+    func trackNotification(name: String) {
+        // Skip system notifications
+        let skip = ["UITextInputCurrentInputModeDidChange", "UIKeyboardWill", "UIKeyboardDid",
+                    "_UIApplicationDidReceiveMemoryWarning", "NSBundle"]
+        guard !skip.contains(where: { name.contains($0) }) else { return }
+        send(["type": "notification", "name": name])
+    }
+
+    // ── Memory Warning ────────────────────────────────────────────────────────
+    private func setupMemoryWarning() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            let mem = self.memoryInfo()
+            self.send([
+                "type": "memoryWarning",
+                "appMemory": mem.appUsed,
+                "freeRAM": mem.free,
+                "screen": self.currentScreen
+            ])
+            print("⚠️ Memory warning — \(mem.appUsed.rounded())MB used")
+        }
+    }
+
+    // ── Network Type ──────────────────────────────────────────────────────────
+    func networkType() -> String {
+        // Simple reachability check via SCNetworkReachability
+        var zeroAddress = sockaddr_in()
+        zeroAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        zeroAddress.sin_family = sa_family_t(AF_INET)
+        guard let reachability = withUnsafePointer(to: &zeroAddress, {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                SCNetworkReachabilityCreateWithAddress(nil, $0)
+            }
+        }) else { return "unknown" }
+        var flags = SCNetworkReachabilityFlags()
+        SCNetworkReachabilityGetFlags(reachability, &flags)
+        if !flags.contains(.reachable) { return "offline" }
+        if flags.contains(.isWWAN) { return "cellular" }
+        return "wifi"
+    }
     private func setupCrashReporting() {
         // Uncaught exceptions
         NSSetUncaughtExceptionHandler { exception in
@@ -228,10 +395,17 @@ class AppDashboard: NSObject {
         monitor.setEventHandler { [weak self] in
             guard let self = self else { return }
             if !self.mainThreadPing {
+                // Capture main thread stack trace
+                var stackTrace = ""
+                DispatchQueue.main.sync {
+                    stackTrace = Thread.callStackSymbols.prefix(15).joined(separator: "\n")
+                }
                 self.send([
                     "type": "anr",
                     "duration": Int(threshold * 1000),
-                    "screen": self.currentScreen
+                    "screen": self.currentScreen,
+                    "stackTrace": stackTrace,
+                    "networkType": self.networkType()
                 ])
                 print("⚡ ANR detected on screen: \(self.currentScreen)")
             }
@@ -302,6 +476,11 @@ class AppDashboard: NSObject {
             "transitionMs": transitionMs as Any,
             "dwellMs": dwellMs as Any
         ])
+        // Refresh debug data on screen change
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.sendVCStack()
+            self.sendUserDefaults()
+        }
     }
 
     // ── API Call Tracking (called by DashboardURLProtocol) ────────────────────
@@ -431,7 +610,31 @@ extension UIViewController {
     }
 }
 
-// ── URLProtocol — intercepts ALL URLSession network calls ─────────────────────
+// ── NotificationCenter swizzle ────────────────────────────────────────────────
+extension NotificationCenter {
+    @objc func tv_post(name: NSNotification.Name, object: Any?, userInfo: [AnyHashable: Any]?) {
+        tv_post(name: name, object: object, userInfo: userInfo)
+        AppDashboard.shared.trackNotification(name: name.rawValue)
+    }
+}
+
+// ── UIApplication tap swizzle ─────────────────────────────────────────────────
+extension UIApplication {
+    @objc func tv_sendEvent(_ event: UIEvent) {
+        tv_sendEvent(event) // call original
+
+        guard event.type == .touches else { return }
+        guard let touch = event.allTouches?.first,
+              touch.phase == .began else { return }
+
+        let location = touch.location(in: nil)
+        AppDashboard.shared.trackTap(
+            x: location.x,
+            y: location.y,
+            screen: AppDashboard.shared.currentScreen
+        )
+    }
+}
 class DashboardURLProtocol: URLProtocol {
     private var startTime: Date?
     private var dataTask: URLSessionDataTask?

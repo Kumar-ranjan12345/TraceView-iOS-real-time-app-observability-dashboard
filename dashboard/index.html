@@ -3,691 +3,1236 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TraceView — iOS Real-time App Observability & Performance Dashboard</title>
+  <title>TraceView — iOS Real-time App Observability</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #111318;
-      color: #e2e8f0; 
-      font-family: 'Inter', -apple-system, sans-serif;
-      min-height: 100vh;
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#4a5568;color:#f1f5f9;font-family:'Inter',sans-serif;min-height:100vh}
+
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      background: #111214;
+      background-image: 
+        radial-gradient(ellipse at 20% 20%, rgba(10,132,255,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(48,209,88,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 10%, rgba(191,90,242,0.08) 0%, transparent 40%);
+      color:#ffffff;
+      font-family:'Inter',sans-serif;
+      min-height:100vh;
     }
 
-    .header {
-      padding: 0 24px; 
-      background: #1c1f26;
-      border-bottom: 1px solid #2d3139;
-      display: flex; align-items: center; gap: 16px;
-      height: 56px;
-    }
-    .header-brand {
-      display: flex; align-items: center; gap: 10px;
-    }
-    .header-logo {
-      width: 28px; height: 28px; border-radius: 7px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; font-weight: 800; color: #fff;
-      letter-spacing: -1px;
-    }
-    .header-title {
-      font-size: 17px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px;
-    }
-    .header-subtitle {
-      font-size: 10px; color: #475569; margin-top: 1px; letter-spacing: 0.2px;
-    }
-    .header-divider {
-      width: 1px; height: 28px; background: #2d3139; margin: 0 4px;
-    }
-    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #ef4444; transition: all 0.3s; flex-shrink: 0; }
-    .status-dot.connected { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
-    .header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
-    .health-ring { position: relative; width: 56px; height: 56px; }
-    .health-ring canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
-    .health-score-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 12px; font-weight: 700; }
+    /* ── NAV ── */
+    nav{display:flex;align-items:center;padding:0 24px;height:52px;background:rgba(17,18,20,0.7);border-bottom:1px solid rgba(255,255,255,.08);position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+    .nav-brand{font-size:18px;font-weight:700;color:#fff;letter-spacing:-0.5px;margin-right:40px}
+    .nav-tabs{display:flex;gap:4px}
+    .nav-tab{padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;color:#8e8e93;transition:all .15s}
+    .nav-tab:hover{color:#ebebf5;background:#2c2c2e}
+    .nav-tab.active{color:#fff;background:#3a3a3c}
+    .nav-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+    .live-badge{display:flex;align-items:center;gap:6px;background:#2c2c2e;border:1px solid #3a3a3c;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:600;color:#8e8e93;letter-spacing:.5px}
+    .live-dot{width:6px;height:6px;border-radius:50%;background:#48484a}
+    .live-dot.on{background:#30d158;box-shadow:0 0 8px rgba(48,209,88,.6)}
+    .heart-btn{width:32px;height:32px;border-radius:50%;background:#2c2c2e;border:1px solid #3a3a3c;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#8e8e93;font-size:14px}
 
-    .tabs { display: flex; gap: 2px; padding: 12px 16px 0; }
-    .tab { 
-      padding: 8px 18px; border-radius: 8px 8px 0 0; font-size: 12px; font-weight: 500; cursor: pointer; 
-      background: #1c1f26; color: #64748b; 
-      border: 1px solid #2d3139; border-bottom: none;
-      transition: all 0.15s;
-    }
-    .tab:hover { color: #94a3b8; }
-    .tab.active { background: #111318; color: #f1f5f9; border-color: #3d4149; }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    /* ── TAB CONTENT ── */
+    .tab-content{display:none}.tab-content.active{display:block}
+    .page{padding:20px 24px}
 
-    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px; }
-    .card { 
-      background: #1c1f26;
-      border-radius: 10px; padding: 14px; 
-      border: 1px solid #2d3139;
-    }
-    .card-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 500; }
-    .card-value { font-size: 24px; font-weight: 700; margin: 5px 0 3px; letter-spacing: -0.5px; }
-    .card-sub { font-size: 10px; color: #475569; }
-    .card-value.green  { color: #22c55e; }
-    .card-value.yellow { color: #f59e0b; }
-    .card-value.red    { color: #ef4444; }
+    /* ── STAT CARDS ── */
+    .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+    .card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px 18px;position:relative;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+    .card-label{font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+    .card-icon{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:13px}
+    .card-value{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1}
+    .card-value.green{color:#30d158}
+    .card-value.yellow{color:#ffd60a}
+    .card-value.red{color:#ff453a}
+    .card-value.white{color:#fff}
+    .card-sub{font-size:11px;color:#8e8e93;margin-top:6px}
+    .card-sub.green{color:#30d158}
+    .card-bar{height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:10px;overflow:hidden}
+    .card-bar-fill{height:100%;background:#30d158;border-radius:2px;transition:width .5s}
 
-    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 14px 14px; }
-    .chart-card { background: #1c1f26; border-radius: 10px; padding: 14px; border: 1px solid #2d3139; }
-    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .chart-title { font-size: 11px; color: #94a3b8; font-weight: 600; letter-spacing: 0.3px; }
-    .chart-stats { display: flex; gap: 12px; font-size: 10px; }
-    .stat-min { color: #22c55e; } .stat-max { color: #ef4444; } .stat-avg { color: #f59e0b; }
+    /* ── CHARTS ── */
+    .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+    .chart-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+    .chart-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+    .chart-title{font-size:14px;font-weight:600;color:#fff}
+    .chart-subtitle{font-size:9px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+    .chart-badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:3px 8px;font-size:10px;color:#ebebf5;font-weight:500}
+    .chart-legend{display:flex;align-items:center;gap:6px;font-size:10px;color:#8e8e93}
+    .legend-dot{width:8px;height:8px;border-radius:50%}
 
-    .ram-section { padding: 0 14px 14px; }
-    .ram-bar-wrap { height: 18px; background: #0d0f13; border-radius: 9px; overflow: hidden; display: flex; }
-    .ram-labels { display: flex; gap: 16px; margin-top: 8px; font-size: 10px; color: #94a3b8; }
+    /* ── RAM BAR ── */
+    .ram-section{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;margin-bottom:20px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+    .ram-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .ram-title{font-size:14px;font-weight:600;color:#fff}
+    .ram-legend{display:flex;gap:20px;font-size:11px;color:#8e8e93}
+    .ram-legend span{display:flex;align-items:center;gap:6px}
+    .ram-bar-wrap{height:20px;background:rgba(0,0,0,.3);border-radius:10px;overflow:hidden;display:flex}
+    .ram-seg{height:100%;transition:width .5s}
 
-    .bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 14px 14px; }
-    .section-card { background: #1c1f26; border-radius: 10px; padding: 14px; border: 1px solid #2d3139; }
-    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .section-title { font-size: 11px; color: #94a3b8; font-weight: 600; letter-spacing: 0.3px; }
-    .export-btn { 
-      padding: 4px 10px; background: #1e293b; border: 1px solid #334155; 
-      border-radius: 6px; color: #94a3b8; font-size: 10px; cursor: pointer;
-      font-family: 'Inter', sans-serif; font-weight: 500;
-      transition: all 0.15s;
-    }
-    .export-btn:hover { background: #273449; color: #cbd5e1; }
+    /* ── BOTTOM GRID ── */
+    .bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .section-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+    .section-title{font-size:14px;font-weight:600;color:#fff;margin-bottom:2px}
+    .section-sub{font-size:9px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
 
-    .screen-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
-    .screen-item { 
-      display: flex; justify-content: space-between; align-items: center; 
-      padding: 7px 10px; background: #161920; border-radius: 7px; 
-      font-size: 11px; flex-wrap: wrap; gap: 4px;
-      border: 1px solid #252830;
-    }
-    .screen-name { color: #e2e8f0; flex: 1; font-weight: 500; }
-    .screen-time { color: #334155; font-size: 10px; }
-    .screen-badges { display: flex; gap: 5px; align-items: center; }
-    .badge { font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 4px; }
-    .badge-label { font-size: 9px; color: #475569; }
-    .badge-green  { background: rgba(34,197,94,0.1); color: #22c55e; }
-    .badge-yellow { background: rgba(245,158,11,0.1); color: #f59e0b; }
-    .badge-red    { background: rgba(239,68,68,0.1); color: #ef4444; }
-    .badge-blue   { background: rgba(99,102,241,0.1); color: #818cf8; }
+    /* ── SCREEN TABLE ── */
+    .screen-table{width:100%;border-collapse:collapse}
+    .screen-table th{text-align:left;font-size:9px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;padding:0 0 10px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .screen-table td{padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px;font-family:monospace}
+    .screen-table tr:last-child td{border-bottom:none}
+    .td-name{color:#fff;font-weight:500}
+    .td-load{font-weight:600}
+    .td-load.fast{color:#30d158}
+    .td-load.warn{color:#ffd60a}
+    .td-load.slow{color:#ff453a}
+    .td-stay{color:#8e8e93}
+    .status-badge{padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;letter-spacing:.5px}
+    .status-active{background:rgba(48,209,88,.15);color:#30d158}
+    .status-closed{background:rgba(255,255,255,.08);color:#8e8e93}
+    .status-latency{background:rgba(255,69,58,.15);color:#ff453a}
 
-    .event-list { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
-    .event-item { 
-      display: flex; gap: 8px; align-items: center; font-size: 11px; 
-      padding: 5px 0; border-bottom: 1px solid #1e2128;
-    }
-    .event-type { padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 600; min-width: 65px; text-align: center; }
-    .event-type.screen  { background: rgba(99,102,241,0.15); color: #818cf8; }
-    .event-type.network { background: rgba(34,197,94,0.12); color: #22c55e; }
-    .event-type.error   { background: rgba(239,68,68,0.12); color: #ef4444; }
-    .event-type.tap     { background: rgba(245,158,11,0.12); color: #f59e0b; }
-    .event-type.event   { background: rgba(100,116,139,0.12); color: #94a3b8; }
+    /* ── EVENT LOG ── */
+    .event-list{display:flex;flex-direction:column;gap:0;max-height:260px;overflow-y:auto}
+    .event-item{display:flex;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);position:relative;padding-left:14px}
+    .event-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:2px}
+    .event-item.green::before{background:#30d158}
+    .event-item.blue::before{background:#0a84ff}
+    .event-item.red::before{background:#ff453a}
+    .event-item.yellow::before{background:#ffd60a}
+    .event-item.gray::before{background:#48484a}
+    .event-time{font-size:10px;color:#8e8e93;font-family:monospace;white-space:nowrap;padding-top:1px}
+    .event-name{font-size:12px;font-weight:600;color:#fff;font-family:monospace}
+    .event-desc{font-size:11px;color:#8e8e93;margin-top:2px}
 
-    /* Network table */
-    .net-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    .net-table th { text-align: left; padding: 8px 10px; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid #2d3139; font-weight: 500; }
-    .net-table td { padding: 8px 10px; border-bottom: 1px solid #1e2128; color: #94a3b8; }
-    .net-table tr:hover td { background: #1c1f26; }
-    .method { padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; }
-    .method-GET    { background: rgba(34,197,94,0.12); color: #22c55e; }
-    .method-POST   { background: rgba(99,102,241,0.12); color: #818cf8; }
-    .method-PUT    { background: rgba(245,158,11,0.12); color: #f59e0b; }
-    .method-DELETE { background: rgba(239,68,68,0.12); color: #ef4444; }
-    .status-ok   { color: #22c55e; font-weight: 600; }
-    .status-err  { color: #ef4444; font-weight: 600; }
-    .status-warn { color: #f59e0b; font-weight: 600; }
-    .dur-fast { color: #22c55e; }
-    .dur-med  { color: #f59e0b; }
-    .dur-slow { color: #ef4444; }
-    .net-wrap { padding: 14px; max-height: 500px; overflow-y: auto; }
-    .net-stats { display: flex; gap: 10px; padding: 0 14px 12px; flex-wrap: wrap; }
-    .net-stat { background: #1c1f26; border-radius: 8px; padding: 10px 16px; border: 1px solid #2d3139; }
-    .net-stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 500; }
-    .net-stat-val { font-size: 18px; font-weight: 700; margin-top: 3px; letter-spacing: -0.5px; }
+    /* ── NETWORK PAGE ── */
+    .net-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+    .net-table-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+    .net-table-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    .net-table-title{font-size:14px;font-weight:600;color:#fff}
+    .net-table-actions{display:flex;gap:8px}
+    .btn-export{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 14px;font-size:12px;color:#ebebf5;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500}
+    .btn-filter{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#8e8e93}
+    .net-table{width:100%;border-collapse:collapse}
+    .net-table th{text-align:left;font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;padding:0 12px 12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+    .net-table td{padding:12px 12px 12px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px}
+    .net-table tr:last-child td{border-bottom:none}
+    .net-table tr:hover td{background:rgba(255,255,255,.04)}
+    .method-badge{padding:4px 10px;border-radius:8px;font-size:10px;font-weight:700;display:inline-block}
+    .m-get{background:rgba(48,209,88,.15);color:#30d158}
+    .m-post{background:rgba(10,132,255,.15);color:#0a84ff}
+    .m-put{background:rgba(255,214,10,.15);color:#ffd60a}
+    .m-delete{background:rgba(255,69,58,.15);color:#ff453a}
+    .net-path{color:#fff;font-weight:500;font-size:13px}
+    .net-host{color:#8e8e93;font-size:10px;margin-top:2px}
+    .status-dot-inline{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px}
+    .s-ok{color:#30d158;font-weight:600}.s-warn{color:#ffd60a;font-weight:600}.s-err{color:#ff453a;font-weight:600}
+    .dur-fast{color:#30d158;font-weight:600}
+    .dur-med{color:#ffd60a;font-weight:600}
+    .dur-slow{color:#ff453a;font-weight:600}
+    .net-size{color:#8e8e93}
+    .net-time{color:#8e8e93;font-family:monospace;font-size:11px}
+    .net-footer{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:#8e8e93}
+    .pagination{display:flex;gap:6px;align-items:center}
+    .page-btn{width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#8e8e93;font-size:12px}
+    .page-btn.active{background:#0a84ff;color:#fff;border-color:#0a84ff;font-weight:700}
+    .search-box{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 12px;font-size:12px;color:#fff;font-family:'Inter',sans-serif;width:200px}
+    .search-box::placeholder{color:#8e8e93}
 
-    ::-webkit-scrollbar { width: 3px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2d3139; border-radius: 2px; }
+    /* ── CRASHES ── */
+    .crash-empty{text-align:center;padding:60px 20px;color:#8e8e93}
+    .crash-item{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;margin-bottom:10px;backdrop-filter:blur(20px)}
+    .crash-header{display:flex;justify-content:space-between;margin-bottom:8px}
+    .crash-name{font-size:13px;font-weight:600;color:#ff453a}
+    .crash-time{font-size:11px;color:#8e8e93;font-family:monospace}
+    .crash-reason{font-size:12px;color:#8e8e93;margin-bottom:10px}
+    .crash-stack{background:rgba(0,0,0,.3);border-radius:8px;padding:10px;font-size:10px;font-family:monospace;color:#8e8e93;overflow-x:auto;white-space:pre;border:1px solid rgba(255,255,255,.08)}
+    .anr-item{border-color:rgba(255,214,10,.2)}
+    .anr-name{color:#ffd60a}
+
+    ::-webkit-scrollbar{width:3px}
+    ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
+    .nav-brand{font-size:18px;font-weight:700;color:#fff;letter-spacing:-0.5px;margin-right:40px}
+    .nav-tabs{display:flex;gap:4px}
+    .nav-tab{padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;color:#94a3b8;transition:all .15s}
+    .nav-tab:hover{color:#e2e8f0;background:rgba(255,255,255,.07)}
+    .nav-tab.active{color:#fff;background:rgba(255,255,255,.15)}
+    .nav-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+    .live-badge{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:600;color:#94a3b8;letter-spacing:.5px}
+    .live-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.2)}
+    .live-dot.on{background:#4ade80;box-shadow:0 0 6px rgba(74,222,128,.6)}
+    .heart-btn{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#94a3b8;font-size:14px}
+
+    /* ── TAB CONTENT ── */
+    .tab-content{display:none}.tab-content.active{display:block}
+    .page{padding:20px 24px}
+
+    /* ── STAT CARDS ── */
+    .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+    .card{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:16px 18px;position:relative}
+    .card-label{font-size:10px;font-weight:600;color:#cbd5e1;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+    .card-icon{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:13px}
+    .card-value{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1}
+    .card-value.green{color:#4ade80}
+    .card-value.yellow{color:#fbbf24}
+    .card-value.red{color:#fca5a5}
+    .card-value.white{color:#fff}
+    .card-sub{font-size:11px;color:#cbd5e1;margin-top:6px}
+    .card-sub.green{color:#4ade80}
+    .card-bar{height:3px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:10px;overflow:hidden}
+    .card-bar-fill{height:100%;background:#4ade80;border-radius:2px;transition:width .5s}
+
+    /* ── CHARTS ── */
+    .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+    .chart-card{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:18px}
+    .chart-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+    .chart-title{font-size:14px;font-weight:600;color:#fff}
+    .chart-subtitle{font-size:9px;font-weight:600;color:#cbd5e1;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+    .chart-badge{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:3px 8px;font-size:10px;color:#e2e8f0;font-weight:500}
+    .chart-legend{display:flex;align-items:center;gap:6px;font-size:10px;color:#cbd5e1}
+    .legend-dot{width:8px;height:8px;border-radius:50%}
+
+    /* ── RAM BAR ── */
+    .ram-section{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:18px;margin-bottom:20px}
+    .ram-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .ram-title{font-size:14px;font-weight:600;color:#fff}
+    .ram-legend{display:flex;gap:20px;font-size:11px;color:#cbd5e1}
+    .ram-legend span{display:flex;align-items:center;gap:6px}
+    .ram-bar-wrap{height:20px;background:rgba(0,0,0,.2);border-radius:10px;overflow:hidden;display:flex}
+    .ram-seg{height:100%;transition:width .5s}
+
+    /* ── BOTTOM GRID ── */
+    .bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .section-card{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:18px}
+    .section-title{font-size:14px;font-weight:600;color:#fff;margin-bottom:2px}
+    .section-sub{font-size:9px;font-weight:600;color:#cbd5e1;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+
+    /* ── SCREEN TABLE ── */
+    .screen-table{width:100%;border-collapse:collapse}
+    .screen-table th{text-align:left;font-size:9px;font-weight:600;color:#cbd5e1;text-transform:uppercase;letter-spacing:1px;padding:0 0 10px;border-bottom:1px solid rgba(255,255,255,.12)}
+    .screen-table td{padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px;font-family:monospace}
+    .screen-table tr:last-child td{border-bottom:none}
+    .td-name{color:#fff;font-weight:500}
+    .td-load{font-weight:600}
+    .td-load.fast{color:#4ade80}
+    .td-load.warn{color:#fbbf24}
+    .td-load.slow{color:#f87171}
+    .td-stay{color:#cbd5e1}
+    .status-badge{padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;letter-spacing:.5px}
+    .status-active{background:rgba(74,222,128,.15);color:#4ade80}
+    .status-closed{background:rgba(255,255,255,.08);color:#94a3b8}
+    .status-latency{background:rgba(248,113,113,.15);color:#f87171}
+
+    /* ── EVENT LOG ── */
+    .event-list{display:flex;flex-direction:column;gap:0;max-height:260px;overflow-y:auto}
+    .event-item{display:flex;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);position:relative;padding-left:14px}
+    .event-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:2px}
+    .event-item.green::before{background:#4ade80}
+    .event-item.blue::before{background:#60a5fa}
+    .event-item.red::before{background:#f87171}
+    .event-item.yellow::before{background:#fbbf24}
+    .event-item.gray::before{background:rgba(255,255,255,.2)}
+    .event-time{font-size:10px;color:#cbd5e1;font-family:monospace;white-space:nowrap;padding-top:1px}
+    .event-name{font-size:12px;font-weight:600;color:#fff;font-family:monospace}
+    .event-desc{font-size:11px;color:#cbd5e1;margin-top:2px}
+
+    /* ── NETWORK PAGE ── */
+    .net-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+    .net-table-card{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:18px}
+    .net-table-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    .net-table-title{font-size:14px;font-weight:600;color:#fff}
+    .net-table-actions{display:flex;gap:8px}
+    .btn-export{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 14px;font-size:12px;color:#cbd5e1;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500}
+    .btn-filter{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#94a3b8}
+    .net-table{width:100%;border-collapse:collapse}
+    .net-table th{text-align:left;font-size:10px;font-weight:600;color:#cbd5e1;text-transform:uppercase;letter-spacing:1px;padding:0 12px 12px 0;border-bottom:1px solid rgba(255,255,255,.12)}
+    .net-table td{padding:12px 12px 12px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px}
+    .net-table tr:last-child td{border-bottom:none}
+    .net-table tr:hover td{background:rgba(255,255,255,.06)}
+    .method-badge{padding:4px 10px;border-radius:8px;font-size:10px;font-weight:700;display:inline-block}
+    .m-get{background:rgba(74,222,128,.15);color:#4ade80}
+    .m-post{background:rgba(129,140,248,.15);color:#818cf8}
+    .m-put{background:rgba(251,191,36,.15);color:#fbbf24}
+    .m-delete{background:rgba(248,113,113,.15);color:#f87171}
+    .net-path{color:#fff;font-weight:500;font-size:13px}
+    .net-host{color:#cbd5e1;font-size:10px;margin-top:2px}
+    .status-dot-inline{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px}
+    .net-status{font-size:12px;font-weight:600}
+    .s-ok{color:#4ade80;font-weight:600}.s-warn{color:#fbbf24;font-weight:600}.s-err{color:#f87171;font-weight:600}
+    .dur-fast{color:#4ade80;font-weight:600}
+    .dur-med{color:#fbbf24;font-weight:600}
+    .dur-slow{color:#f87171;font-weight:600}
+    .net-size{color:#94a3b8}
+    .net-time{color:#94a3b8;font-family:monospace;font-size:11px}
+    .net-footer{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:#94a3b8}
+    .pagination{display:flex;gap:6px;align-items:center}
+    .page-btn{width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#94a3b8;font-size:12px}
+    .page-btn.active{background:rgba(255,255,255,.2);color:#fff;border-color:rgba(255,255,255,.2);font-weight:700}
+    .search-box{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 12px;font-size:12px;color:#cbd5e1;font-family:'Inter',sans-serif;width:200px}
+    .search-box::placeholder{color:#64748b}
+
+    /* ── CRASHES ── */
+    .crash-empty{text-align:center;padding:60px 20px;color:#94a3b8}
+    .crash-item{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;margin-bottom:10px}
+    .crash-header{display:flex;justify-content:space-between;margin-bottom:8px}
+    .crash-name{font-size:13px;font-weight:600;color:#f87171}
+    .crash-time{font-size:11px;color:#94a3b8;font-family:monospace}
+    .crash-reason{font-size:12px;color:#94a3b8;margin-bottom:10px}
+    .crash-stack{background:rgba(0,0,0,.2);border-radius:8px;padding:10px;font-size:10px;font-family:monospace;color:#94a3b8;overflow-x:auto;white-space:pre;border:1px solid rgba(255,255,255,.06)}
+    .anr-item{border-color:rgba(251,191,36,.2)}
+    .anr-name{color:#fbbf24}
+
+    ::-webkit-scrollbar{width:3px}
+    ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
   </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-brand">
-    <div class="header-logo">TV</div>
-    <div>
-      <div class="header-title" id="headerTitle">TraceView</div>
-      <div class="header-subtitle">iOS Real-time App Observability</div>
-    </div>
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">TraceView</div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="switchTab('overview')">Overview</div>
+    <div class="nav-tab" onclick="switchTab('network')">Network</div>
+    <div class="nav-tab" onclick="switchTab('crashes')">Crashes</div>
+    <div class="nav-tab" onclick="switchTab('analytics')">Analytics</div>
+    <div class="nav-tab" onclick="switchTab('debug')">Debug</div>
   </div>
-  <div class="header-divider"></div>
-  <div class="status-dot" id="statusDot"></div>
-  <span id="statusText" style="font-size:11px;color:#64748b">Waiting for app...</span>
-  <span id="appName" style="font-size:11px;color:#94a3b8;background:#1e2128;padding:3px 10px;border-radius:20px;border:1px solid #2d3139"></span>
-  <div class="header-right">
-    <div style="text-align:right">
-      <div style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px">Health</div>
-      <div style="font-size:9px;color:#475569" id="healthLabel">--</div>
+  <div class="nav-right">
+    <div class="live-badge">
+      <div class="live-dot" id="liveDot"></div>
+      <span id="liveText">WAITING...</span>
     </div>
-    <div class="health-ring">
-      <canvas id="healthRing" width="56" height="56"></canvas>
-      <span class="health-score-text" id="healthScore">--</span>
-    </div>
+    <div class="heart-btn">♡</div>
   </div>
-</div>
+</nav>
 
-<!-- Tabs -->
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('overview')">Overview</div>
-  <div class="tab" onclick="switchTab('network')">Network <span id="netBadge" style="background:#1e293b;padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></div>
-  <div class="tab" onclick="switchTab('crashes')">Crashes <span id="crashBadge" style="background:#1e293b;padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></div>
-</div>
-
-<!-- Overview Tab -->
+<!-- ══ OVERVIEW TAB ══════════════════════════════════════════════════════════ -->
 <div id="tab-overview" class="tab-content active">
-<div class="grid">
-  <div class="card">
-    <div class="card-label">App Memory</div>
-    <div class="card-value green" id="memVal">--</div>
-    <div class="card-sub" id="memPeak">Peak: --</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Device RAM</div>
-    <div class="card-value" id="ramVal" style="font-size:16px;color:#fff;margin-top:4px">--</div>
-    <div class="card-sub" id="ramFree">Free: --</div>
-  </div>
-  <div class="card">
-    <div class="card-label">CPU</div>
-    <div class="card-value green" id="cpuVal">--</div>
-    <div class="card-sub" id="cpuAvgSub">Avg: --</div>
-  </div>
-  <div class="card">
-    <div class="card-label">FPS</div>
-    <div class="card-value green" id="fpsVal">--</div>
-    <div class="card-sub">frames/sec</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Current Screen</div>
-    <div class="card-value" id="screenVal" style="font-size:13px;color:#fff;margin-top:4px">--</div>
-    <div class="card-sub" id="screenTime"></div>
-  </div>
-</div>
+<div class="page">
 
-<!-- Charts -->
-<div class="charts">
-  <div class="chart-card">
-    <div class="chart-header">
-      <span class="chart-title">App Memory (MB)</span>
-      <div class="chart-stats">
-        <span class="stat-min" id="memMin">Min: --</span>
-        <span class="stat-avg" id="memAvg">Avg: --</span>
-        <span class="stat-max" id="memMax">Max: --</span>
-      </div>
+  <!-- Stat Cards -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">App Memory</div>
+      <div class="card-icon">🧠</div>
+      <div class="card-value green" id="memVal">--</div>
+      <div class="card-sub" id="memUnit">MB</div>
+      <div class="card-bar"><div class="card-bar-fill" id="memBar" style="width:0%"></div></div>
     </div>
-    <canvas id="memoryChart" height="100"></canvas>
-  </div>
-  <div class="chart-card">
-    <div class="chart-header">
-      <span class="chart-title">CPU Usage (%)</span>
-      <div class="chart-stats">
-        <span class="stat-min" id="cpuMin">Min: --</span>
-        <span class="stat-avg" id="cpuAvg2">Avg: --</span>
-        <span class="stat-max" id="cpuMax">Max: --</span>
-      </div>
+    <div class="card">
+      <div class="card-label">Device RAM</div>
+      <div class="card-icon">≡</div>
+      <div class="card-value white" id="ramVal" style="font-size:20px;margin-top:4px">-- / --</div>
+      <div class="card-sub green" id="ramCap">-- Capacity</div>
     </div>
-    <canvas id="cpuChart" height="100"></canvas>
+    <div class="card">
+      <div class="card-label">CPU Usage</div>
+      <div class="card-icon">⚙</div>
+      <div class="card-value green" id="cpuVal">--</div>
+      <div class="card-sub" id="cpuDelta">-- from avg</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Current FPS</div>
+      <div class="card-icon">📷</div>
+      <div class="card-value green" id="fpsVal">--</div>
+      <div class="card-sub" id="fpsState">-- / High Perf</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Current Screen</div>
+      <div class="card-icon">◈</div>
+      <div class="card-value white" id="screenVal" style="font-size:14px;margin-top:6px;word-break:break-all">--</div>
+      <div class="card-sub" id="screenActive">⏱ Active --</div>
+    </div>
   </div>
-</div>
 
-<!-- RAM Breakdown -->
-<div class="ram-section">
-  <div class="chart-card">
-    <div class="chart-header">
-      <span class="chart-title">Device RAM Breakdown</span>
-      <span id="ramTotal" style="font-size:11px;color:#888"></span>
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">App Memory History</div>
+          <div class="chart-subtitle">Real-time Telemetry (MB)</div>
+        </div>
+        <div class="chart-badge">30 MIN WINDOW</div>
+      </div>
+      <canvas id="memChart" height="130"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">CPU Usage</div>
+          <div class="chart-subtitle">Processor Load (%)</div>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-dot" style="background:#818cf8"></div>
+          <span>1sec</span>
+        </div>
+      </div>
+      <canvas id="cpuChart" height="130"></canvas>
+    </div>
+  </div>
+
+  <!-- RAM Breakdown -->
+  <div class="ram-section">
+    <div class="ram-header">
+      <div class="chart-title">Device RAM Breakdown</div>
+      <div class="ram-legend">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#30d158;border-radius:2px"></span> THIS APP (<span id="ramAppMB">--</span>)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#0a84ff;border-radius:2px"></span> OTHER (<span id="ramOtherMB">--</span>)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#3a3a3c;border-radius:2px;border:1px solid #48484a"></span> FREE (<span id="ramFreeMB">--</span>)</span>
+      </div>
     </div>
     <div class="ram-bar-wrap">
-      <div id="ramAppBar"  style="background:#00e676;transition:width 0.5s;"></div>
-      <div id="ramUsedBar" style="background:#ffd740;transition:width 0.5s;"></div>
-      <div id="ramFreeBar" style="background:#2a2a3a;transition:width 0.5s;"></div>
-    </div>
-    <div class="ram-labels">
-      <span><span style="color:#00e676">■</span> This App: <span id="ramAppLabel">--</span></span>
-      <span><span style="color:#ffd740">■</span> Other: <span id="ramOtherLabel">--</span></span>
-      <span><span style="color:#555">■</span> Free: <span id="ramFreeLabel">--</span></span>
+      <div class="ram-seg" id="ramAppSeg" style="background:#30d158;width:0%"></div>
+      <div class="ram-seg" id="ramOtherSeg" style="background:#0a84ff;width:0%"></div>
+      <div class="ram-seg" id="ramFreeSeg" style="background:#3a3a3c;width:100%"></div>
     </div>
   </div>
+
+  <!-- Device & App Info -->
+  <div class="ram-section">
+    <div class="ram-header" style="margin-bottom:12px">
+      <div class="ram-title">Device & App Info</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px">
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">App</div>
+        <div style="font-size:12px;font-weight:600;color:#fff" id="di-appName">--</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Version</div>
+        <div style="font-size:12px;font-weight:600;color:#fff" id="di-version">--</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Bundle</div>
+        <div style="font-size:9px;font-weight:500;color:#8e8e93;font-family:monospace;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="di-bundle">--</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Env</div>
+        <div style="font-size:12px;font-weight:600" id="di-env">--</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Device</div>
+        <div style="font-size:12px;font-weight:600;color:#fff" id="di-device">--</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Name</div>
+        <div style="font-size:12px;font-weight:600;color:#fff" id="di-deviceName">--</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">iOS</div>
+        <div style="font-size:12px;font-weight:600;color:#fff" id="di-ios">--</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:8px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Network</div>
+        <div style="font-size:12px;font-weight:600" id="di-network">--</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Grid -->
+  <div class="bottom-grid">
+    <!-- Screen Transitions -->
+    <div class="section-card">
+      <div class="section-title">Screen Transitions</div>
+      <div class="section-sub">Recent Navigation Lifecycle</div>
+      <table class="screen-table">
+        <thead>
+          <tr>
+            <th>ViewController</th>
+            <th>Load Time</th>
+            <th>Stay Duration</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="screenTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Event Log -->
+    <div class="section-card">
+      <div class="section-title">Event Log</div>
+      <div class="section-sub">Chronological Sequence</div>
+      <div class="event-list" id="eventList"></div>
+    </div>
+  </div>
+
+</div>
 </div>
 
-<!-- Screen Transitions + Event Log -->
-<div class="bottom">
-  <div class="section-card">
-    <div class="section-header">
-      <span class="section-title">Screen Transitions</span>
-      <span style="font-size:10px;color:#555">⏱ loading time &nbsp; 🕐 stayed time</span>
-    </div>
-    <div class="screen-list" id="screenList"></div>
-  </div>
-  <div class="section-card">
-    <div class="section-header">
-      <span class="section-title">Event Log</span>
-      <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
-    </div>
-    <div class="event-list" id="eventList"></div>
-  </div>
-</div>
-</div>
-
-<!-- Network Tab -->
+<!-- ══ NETWORK TAB ═══════════════════════════════════════════════════════════ -->
 <div id="tab-network" class="tab-content">
-  <div class="net-stats">
-    <div class="net-stat"><div class="net-stat-label">Total Requests</div><div class="net-stat-val" id="netTotal">0</div></div>
-    <div class="net-stat"><div class="net-stat-label">Avg Response</div><div class="net-stat-val" id="netAvg">--</div></div>
-    <div class="net-stat"><div class="net-stat-label">Slowest</div><div class="net-stat-val" id="netSlowest" style="color:#ff5252">--</div></div>
-    <div class="net-stat"><div class="net-stat-label">Errors</div><div class="net-stat-val" id="netErrors" style="color:#ff5252">0</div></div>
-    <div class="net-stat" style="margin-left:auto">
-      <div class="net-stat-label">Export</div>
-      <button class="export-btn" style="margin-top:4px" onclick="exportNetworkCSV()">⬇ CSV</button>
+<div class="page">
+
+  <div class="net-cards">
+    <div class="card">
+      <div class="card-label">Total Requests</div>
+      <div class="card-icon">⇄</div>
+      <div class="card-value white" id="netTotal">0</div>
+      <div class="card-sub green" id="netToday">+0 today</div>
+      <div class="card-bar"><div class="card-bar-fill" id="netBar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg Response</div>
+      <div class="card-icon">◎</div>
+      <div class="card-value white" id="netAvg" style="font-size:22px">-- <span style="font-size:14px;color:#64748b">MS</span></div>
+      <div style="display:flex;gap:4px;margin-top:8px" id="netBars"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Slowest</div>
+      <div class="card-icon">🔕</div>
+      <div class="card-value white" id="netSlowest" style="font-size:22px">-- <span style="font-size:14px;color:#64748b">MS</span></div>
+      <div class="card-sub" id="netSlowestURL" style="font-size:10px;color:#64748b;margin-top:4px">--</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Errors</div>
+      <div class="card-icon">⚡</div>
+      <div class="card-value green" id="netErrors">0</div>
+      <div class="card-sub green" id="netHealth">● Live Monitoring Active</div>
     </div>
   </div>
-  <div class="net-wrap">
+
+  <div class="net-table-card">
+    <div class="net-table-header">
+      <div class="net-table-title">Network Activity</div>
+      <div class="net-table-actions">
+        <input class="search-box" placeholder="🔍 Search requests..." id="netSearch" oninput="renderNetTable()">
+        <button class="btn-export" onclick="exportNetCSV()">Export CSV</button>
+        <div class="btn-filter">≡</div>
+      </div>
+    </div>
     <table class="net-table">
       <thead>
         <tr>
-          <th>Method</th>
+          <th style="width:80px">Method</th>
           <th>URL</th>
-          <th>Status</th>
-          <th>Duration</th>
-          <th>Size</th>
-          <th>Time</th>
+          <th style="width:120px">Status</th>
+          <th style="width:100px">Duration</th>
+          <th style="width:80px">Size</th>
+          <th style="width:130px">Time</th>
         </tr>
       </thead>
       <tbody id="netTableBody"></tbody>
     </table>
-  </div>
-</div>
-
-<!-- Crashes Tab -->
-<div id="tab-crashes" class="tab-content">
-  <div class="net-stats">
-    <div class="net-stat"><div class="net-stat-label">Total Crashes</div><div class="net-stat-val" id="crashTotal" style="color:#ef4444">0</div></div>
-    <div class="net-stat"><div class="net-stat-label">Exceptions</div><div class="net-stat-val" id="crashExceptions">0</div></div>
-    <div class="net-stat"><div class="net-stat-label">Signals</div><div class="net-stat-val" id="crashSignals">0</div></div>
-    <div class="net-stat"><div class="net-stat-label">ANRs</div><div class="net-stat-val" id="crashANRs" style="color:#f59e0b">0</div></div>
-    <div class="net-stat" style="margin-left:auto">
-      <div class="net-stat-label">Export</div>
-      <button class="export-btn" style="margin-top:4px" onclick="exportCrashCSV()">⬇ CSV</button>
+    <div class="net-footer">
+      <span id="netCount">Showing 0 of 0 requests</span>
+      <div class="pagination">
+        <div class="page-btn">‹</div>
+        <div class="page-btn active">1</div>
+        <div class="page-btn">›</div>
+      </div>
     </div>
   </div>
-  <div class="net-wrap">
-    <div id="crashList" style="display:flex;flex-direction:column;gap:10px;"></div>
+
+</div>
+</div>
+
+<!-- ══ CRASHES TAB ════════════════════════════════════════════════════════════ -->
+<div id="tab-crashes" class="tab-content">
+<div class="page">
+  <div class="net-cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card">
+      <div class="card-label">Total Crashes</div>
+      <div class="card-value red" id="crashTotal">0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Exceptions</div>
+      <div class="card-value white" id="crashExc">0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Signals</div>
+      <div class="card-value white" id="crashSig">0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">ANRs</div>
+      <div class="card-value yellow" id="crashANR">0</div>
+    </div>
   </div>
+  <div id="crashList">
+    <div class="crash-empty">
+      <div style="font-size:48px;margin-bottom:12px">✓</div>
+      <div style="font-size:16px;font-weight:600;color:#4ade80;margin-bottom:6px">No Crashes Detected</div>
+      <div>Your app is running healthy</div>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ══ DEBUG TAB ══════════════════════════════════════════════════════════════ -->
+<div id="tab-debug" class="tab-content">
+<div class="page">
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+
+    <!-- Console Log -->
+    <div class="section-card">
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <div class="section-title">Console Log</div>
+          <div class="section-sub">print() output from app</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="filterConsole('all')" id="cf-all" style="padding:3px 8px;border-radius:6px;font-size:10px;cursor:pointer;background:rgba(255,255,255,.15);color:#fff;border:none;font-family:'Inter',sans-serif">All</button>
+          <button onclick="filterConsole('error')" id="cf-error" style="padding:3px 8px;border-radius:6px;font-size:10px;cursor:pointer;background:rgba(255,255,255,.06);color:#8e8e93;border:none;font-family:'Inter',sans-serif">Error</button>
+          <button onclick="filterConsole('warn')" id="cf-warn" style="padding:3px 8px;border-radius:6px;font-size:10px;cursor:pointer;background:rgba(255,255,255,.06);color:#8e8e93;border:none;font-family:'Inter',sans-serif">Warn</button>
+          <button onclick="clearConsole()" style="padding:3px 8px;border-radius:6px;font-size:10px;cursor:pointer;background:rgba(255,69,58,.15);color:#ff453a;border:none;font-family:'Inter',sans-serif">Clear</button>
+        </div>
+      </div>
+      <div id="consoleLog" style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px;max-height:300px;overflow-y:auto;font-family:monospace;font-size:11px;display:flex;flex-direction:column;gap:2px"></div>
+    </div>
+
+    <!-- VC Stack -->
+    <div class="section-card">
+      <div class="section-title">View Controller Stack</div>
+      <div class="section-sub">Current navigation hierarchy</div>
+      <div id="vcStack" style="background:rgba(0,0,0,.3);border-radius:10px;padding:12px;font-family:monospace;font-size:12px;color:#e2e8f0;line-height:1.8;max-height:300px;overflow-y:auto"></div>
+    </div>
+
+  </div>
+
+  <!-- UserDefaults Inspector -->
+  <div class="section-card">
+    <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <div class="section-title">UserDefaults Inspector</div>
+        <div class="section-sub">App key-value storage</div>
+      </div>
+      <input id="udSearch" placeholder="Search keys..." oninput="renderUserDefaults()"
+        style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 12px;font-size:11px;color:#fff;font-family:'Inter',sans-serif;width:180px">
+    </div>
+    <div style="max-height:250px;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px" id="udTable">
+        <thead>
+          <tr>
+            <th style="text-align:left;font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;padding:0 0 10px;border-bottom:1px solid rgba(255,255,255,.08)">Key</th>
+            <th style="text-align:left;font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;padding:0 0 10px;border-bottom:1px solid rgba(255,255,255,.08)">Value</th>
+          </tr>
+        </thead>
+        <tbody id="udBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Notification Log -->
+  <div class="section-card" style="margin-top:12px">
+    <div class="section-title">Notification Center Log</div>
+    <div class="section-sub">NotificationCenter.post events</div>
+    <div id="notifLog" style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:11px;display:flex;flex-direction:column;gap:3px"></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══ ANALYTICS TAB ══════════════════════════════════════════════════════════ -->
+<div id="tab-analytics" class="tab-content">
+<div class="page">
+
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+    <div class="card">
+      <div class="card-label">Total Taps</div>
+      <div class="card-value white" id="totalTaps">0</div>
+      <div class="card-sub">this session</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Screens Visited</div>
+      <div class="card-value white" id="uniqueScreens">0</div>
+      <div class="card-sub">unique screens</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Session Duration</div>
+      <div class="card-value white" id="sessionDuration">0:00</div>
+      <div class="card-sub">since launch</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg Screen Time</div>
+      <div class="card-value white" id="avgScreenTime">--</div>
+      <div class="card-sub">per screen</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+
+    <!-- Tap Heatmap -->
+    <div class="section-card">
+      <div class="section-title">Tap Heatmap</div>
+      <div class="section-sub" id="heatmapScreen">Select a screen below</div>
+      <div style="position:relative;background:rgba(0,0,0,.3);border-radius:12px;overflow:hidden;margin-bottom:10px" id="heatmapContainer">
+        <!-- Phone outline -->
+        <div style="width:60%;margin:0 auto;padding-top:106%;position:relative">
+          <canvas id="heatmapCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas>
+        </div>
+      </div>
+      <!-- Screen selector -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="heatmapScreenBtns"></div>
+    </div>
+
+    <!-- User Flow -->
+    <div class="section-card">
+      <div class="section-title">User Flow</div>
+      <div class="section-sub">Navigation sequence this session</div>
+      <div id="userFlow" style="display:flex;flex-direction:column;gap:0;max-height:400px;overflow-y:auto"></div>
+    </div>
+
+  </div>
+
+  <!-- Screen Funnel -->
+  <div class="section-card">
+    <div class="section-title">Screen Engagement</div>
+    <div class="section-sub">Time spent per screen (seconds)</div>
+    <canvas id="funnelChart" height="80"></canvas>
+  </div>
+
+  <!-- Device Info -->
+  <div class="section-card" style="margin-top:12px">
+    <div class="section-title">Device & App Info</div>
+    <div class="section-sub">Session context</div>
+
+</div>
 </div>
 
 <script>
   const MAX = 60;
-  const memHistory = [], cpuHistory = [];
-  const screenTransitions = [];
-  const allEvents = [];
-  let peakMem = 0;
-  let screenCount = 0;
+  const memH = [], cpuH = [];
+  const screenRows = [], events = [], netCalls = [], crashes = [];
+  let peakMem = 0, screenStart = null, currentScreenName = '--';
 
   // ── Charts ──────────────────────────────────────────────────────────────────
-  function makeChart(id, color, maxY) {
-    return new Chart(document.getElementById(id), {
-      type: 'line',
-      data: {
-        labels: Array(MAX).fill(''),
-        datasets: [{ data: Array(MAX).fill(null), borderColor: color,
-          backgroundColor: color.replace('rgb','rgba').replace(')',',0.1)'),
-          borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 }]
-      },
-      options: {
-        animation: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { display: false },
-          y: { max: maxY, grid: { color: '#1e2128' }, ticks: { color: '#475569', font: { size: 10, family: 'Inter' } } }
+  const memChart = new Chart(document.getElementById('memChart'), {
+    type: 'line',
+    data: { labels: Array(MAX).fill(''), datasets: [{ data: Array(MAX).fill(null),
+      borderColor: '#30d158', backgroundColor: 'rgba(48,209,88,0.08)',
+      borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4,
+      pointHoverRadius: 5, pointHoverBackgroundColor: '#30d158', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 }] },
+    options: {
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(17,18,20,0.9)', titleColor: '#8e8e93',
+          bodyColor: '#30d158', borderColor: 'rgba(255,255,255,.12)',
+          borderWidth: 1, padding: 10, displayColors: false,
+          callbacks: { title: () => '', label: ctx => `${ctx.parsed.y?.toFixed(1) ?? '--'} MB` }
         }
-      }
-    });
-  }
-  const memChart = makeChart('memoryChart', 'rgb(34,197,94)', undefined);
-  const cpuChart = makeChart('cpuChart', 'rgb(99,102,241)', 100);
-
-  // ── Health Ring ──────────────────────────────────────────────────────────────
-  const healthChart = new Chart(document.getElementById('healthRing').getContext('2d'), {
-    type: 'doughnut',
-    data: { datasets: [{ data: [0,100], backgroundColor: ['#22c55e','#1e2128'], borderWidth: 0 }] },
-    options: { cutout: '78%', animation: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+      },
+      scales: { x: { display: false }, y: { grid: { color: '#3a3a3c' }, ticks: { color: '#8e8e93', font: { size: 10 } } } }
+    }
   });
 
-  function updateHealth(score) {
-    const color = score >= 80 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
-    const label = score >= 80 ? 'Good' : score >= 50 ? 'Fair' : 'Poor';
-    healthChart.data.datasets[0].data = [score, 100 - score];
-    healthChart.data.datasets[0].backgroundColor[0] = color;
-    healthChart.update();
-    const el = document.getElementById('healthScore');
-    el.textContent = score;
-    el.style.color = color;
-    document.getElementById('healthLabel').textContent = label;
-    document.getElementById('healthLabel').style.color = color;
-  }
+  const cpuChart = new Chart(document.getElementById('cpuChart'), {
+    type: 'line',
+    data: { labels: Array(MAX).fill(''), datasets: [{ data: Array(MAX).fill(null),
+      borderColor: '#0a84ff', backgroundColor: 'rgba(10,132,255,0.08)',
+      borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4,
+      pointHoverRadius: 5, pointHoverBackgroundColor: '#0a84ff', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2 }] },
+    options: {
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(17,18,20,0.9)', titleColor: '#8e8e93',
+          bodyColor: '#0a84ff', borderColor: 'rgba(255,255,255,.12)',
+          borderWidth: 1, padding: 10, displayColors: false,
+          callbacks: { title: () => '', label: ctx => `${ctx.parsed.y?.toFixed(1) ?? '--'} %` }
+        }
+      },
+      scales: { x: { display: false }, y: { max: 100, grid: { color: '#3a3a3c' }, ticks: { color: '#8e8e93', font: { size: 10 } } } }
+    }
+  });
 
   // ── WebSocket ────────────────────────────────────────────────────────────────
   const ws = new WebSocket(`ws://${location.host}?type=dashboard`);
-  ws.onopen  = () => { document.getElementById('statusDot').classList.add('connected'); document.getElementById('statusText').textContent = 'Dashboard ready'; };
-  ws.onclose = () => { document.getElementById('statusDot').classList.remove('connected'); document.getElementById('statusText').textContent = 'Disconnected'; };
-  ws.onmessage = e => handleMetric(JSON.parse(e.data));
+  ws.onopen  = () => { document.getElementById('liveDot').classList.add('on'); };
+  ws.onclose = () => { document.getElementById('liveDot').classList.remove('on'); document.getElementById('liveText').textContent = 'DISCONNECTED'; };
+  ws.onmessage = e => handle(JSON.parse(e.data));
 
-  function handleMetric(msg) {
-    document.getElementById('statusText').textContent = 'Live ●';
+  function handle(msg) {
     if (msg.appName) {
-      document.getElementById('appName').textContent = msg.appName;
-      document.getElementById('headerTitle').textContent = 'TraceView';
+      document.getElementById('liveText').textContent = `LIVE · iOS ${msg.iosVersion || ''} · ${msg.networkType || ''}`.toUpperCase();
       document.title = `TraceView — ${msg.appName}`;
     }
-    if (msg.type === 'metrics') updateMetrics(msg);
-    else if (msg.type === 'screen') updateScreen(msg);
-    else if (msg.type === 'network') handleNetwork(msg);
-    else if (msg.type === 'crash' || msg.type === 'anr') handleCrash(msg);
-    else if (msg.type === 'event') addEvent(msg.eventType || 'event', msg.name);
+    // Always update device info when any of these fields arrive
+    if (msg.appName)     document.getElementById('di-appName').textContent = msg.appName;
+    if (msg.appVersion)  document.getElementById('di-version').textContent = `${msg.appVersion} (${msg.appBuild || '--'})`;
+    if (msg.bundleID)    document.getElementById('di-bundle').textContent = msg.bundleID;
+    if (msg.deviceModel) document.getElementById('di-device').textContent = msg.deviceModel;
+    if (msg.deviceName)  document.getElementById('di-deviceName').textContent = msg.deviceName;
+    if (msg.iosVersion)  document.getElementById('di-ios').textContent = `iOS ${msg.iosVersion}`;
+    if (msg.networkType !== undefined) {
+      const netEl = document.getElementById('di-network');
+      const netColors = { wifi:'#30d158', cellular:'#0a84ff', offline:'#ff453a', unknown:'#8e8e93' };
+      netEl.textContent = (msg.networkType || 'unknown').toUpperCase();
+      netEl.style.color = netColors[msg.networkType] || '#8e8e93';
+    }
+    if (msg.isSimulator !== undefined) {
+      const envEl = document.getElementById('di-env');
+      envEl.textContent = msg.isSimulator ? 'Simulator' : 'Device';
+      envEl.style.color = msg.isSimulator ? '#ffd60a' : '#30d158';
+    }
+    if (msg.type === 'metrics')       updateMetrics(msg);
+    if (msg.type === 'screen')        { updateScreen(msg); updateUserFlow(msg.name, msg.dwellMs); }
+    if (msg.type === 'network')       addNetCall(msg);
+    if (msg.type === 'event')         addEvent(msg);
+    if (msg.type === 'tap')           handleTap(msg);
+    if (msg.type === 'launch')        handleLaunch(msg);
+    if (msg.type === 'memoryWarning') handleMemoryWarning(msg);
+    if (msg.type === 'console')       addConsoleLog(msg);
+    if (msg.type === 'userDefaults')  updateUserDefaults(msg.data);
+    if (msg.type === 'vcStack')       updateVCStack(msg.stack);
+    if (msg.type === 'notification')  addNotifLog(msg.name);
+    if (msg.type === 'crash' || msg.type === 'anr') addCrash(msg);
+  }
+
+  function handleLaunch(msg) {
+    const ms = msg.launchMs ?? 0;
+    const color = ms < 500 ? '#30d158' : ms < 1000 ? '#ffd60a' : '#ff453a';
+    addEventEntry('blue', new Date().toLocaleTimeString(), 'APP_LAUNCHED',
+      `Cold start: ${ms}ms · Network: ${msg.networkType || 'unknown'}`);
+    // Show launch time in a toast-style banner
+    const banner = document.createElement('div');
+    banner.style.cssText = `position:fixed;top:60px;right:20px;background:rgba(10,132,255,.9);color:#fff;padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;z-index:999;backdrop-filter:blur(10px)`;
+    banner.textContent = `🚀 Launch: ${ms}ms`;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 4000);
+  }
+
+  function handleMemoryWarning(msg) {
+    addEventEntry('red', new Date().toLocaleTimeString(), 'MEMORY_WARNING',
+      `App: ${msg.appMemory?.toFixed(1)}MB · Free RAM: ${msg.freeRAM?.toFixed(0)}MB · Screen: ${msg.screen}`);
+    // Flash memory card red
+    const card = document.getElementById('memVal');
+    card.style.color = '#ff453a';
+    setTimeout(() => { card.style.color = ''; }, 3000);
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
   function updateMetrics(msg) {
-    const appMem   = msg.appMemory ?? 0;
-    const totalRAM = msg.totalRAM  ?? 0;
-    const usedRAM  = msg.usedRAM   ?? 0;
-    const freeRAM  = msg.freeRAM   ?? 0;
-    const otherRAM = Math.max(0, usedRAM - appMem);
-    const cpu = msg.cpu ?? 0;
-    const fps = msg.fps ?? 60;
+    const mem = msg.appMemory ?? 0, cpu = msg.cpu ?? 0, fps = msg.fps ?? 60;
+    const total = msg.totalRAM ?? 0, used = msg.usedRAM ?? 0, free = msg.freeRAM ?? 0;
+    const other = Math.max(0, used - mem);
 
-    // Rolling history
-    memHistory.push(appMem); if (memHistory.length > MAX) memHistory.shift();
-    cpuHistory.push(cpu);    if (cpuHistory.length > MAX) cpuHistory.shift();
-
-    memChart.data.datasets[0].data = [...Array(MAX - memHistory.length).fill(null), ...memHistory];
-    cpuChart.data.datasets[0].data = [...Array(MAX - cpuHistory.length).fill(null), ...cpuHistory];
+    memH.push(mem); if (memH.length > MAX) memH.shift();
+    cpuH.push(cpu); if (cpuH.length > MAX) cpuH.shift();
+    memChart.data.datasets[0].data = [...Array(MAX - memH.length).fill(null), ...memH];
+    cpuChart.data.datasets[0].data = [...Array(MAX - cpuH.length).fill(null), ...cpuH];
     memChart.update(); cpuChart.update();
 
-    // Stats
-    const memMin = Math.min(...memHistory).toFixed(1);
-    const memMax = Math.max(...memHistory).toFixed(1);
-    const memAvg = (memHistory.reduce((a,b)=>a+b,0)/memHistory.length).toFixed(1);
-    const cpuMin = Math.min(...cpuHistory).toFixed(1);
-    const cpuMax = Math.max(...cpuHistory).toFixed(1);
-    const cpuAvg = (cpuHistory.reduce((a,b)=>a+b,0)/cpuHistory.length).toFixed(1);
+    if (mem > peakMem) peakMem = mem;
+    const avgCpu = cpuH.length ? cpuH.reduce((a,b)=>a+b,0)/cpuH.length : 0;
+    const delta = cpu - avgCpu;
 
-    document.getElementById('memMin').textContent  = `Min: ${memMin}`;
-    document.getElementById('memAvg').textContent  = `Avg: ${memAvg}`;
-    document.getElementById('memMax').textContent  = `Max: ${memMax}`;
-    document.getElementById('cpuMin').textContent  = `Min: ${cpuMin}`;
-    document.getElementById('cpuAvg2').textContent = `Avg: ${cpuAvg}`;
-    document.getElementById('cpuMax').textContent  = `Max: ${cpuMax}`;
+    setVal('memVal', mem.toFixed(1), mem > 200 ? 'red' : mem > 100 ? 'yellow' : 'green');
+    document.getElementById('memBar').style.width = total > 0 ? `${(mem/total*100).toFixed(0)}%` : '0%';
+    setVal('cpuVal', cpu.toFixed(1) + ' %', cpu > 80 ? 'red' : cpu > 50 ? 'yellow' : 'green');
+    document.getElementById('cpuDelta').textContent = `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}% from avg`;
+    setVal('fpsVal', fps.toFixed(0) + ' fps', fps < 30 ? 'red' : fps < 50 ? 'yellow' : 'green');
+    document.getElementById('fpsState').textContent = fps >= 55 ? 'Locked / High Perf' : fps >= 30 ? 'Normal' : 'Degraded';
 
-    if (appMem > peakMem) peakMem = appMem;
-    document.getElementById('memPeak').textContent   = `Peak: ${peakMem.toFixed(1)} MB`;
-    document.getElementById('cpuAvgSub').textContent = `Avg: ${cpuAvg}%`;
-
-    setCard('memVal', appMem.toFixed(1), appMem > 200 ? 'red' : appMem > 100 ? 'yellow' : 'green');
-    setCard('cpuVal', cpu.toFixed(1),    cpu > 80 ? 'red' : cpu > 50 ? 'yellow' : 'green');
-    setCard('fpsVal', fps.toFixed(0),    fps < 30 ? 'red' : fps < 50 ? 'yellow' : 'green');
-
-    // Device RAM card
-    if (totalRAM > 0) {
-      document.getElementById('ramVal').textContent  = `${usedRAM.toFixed(0)} / ${totalRAM.toFixed(0)} MB`;
-      document.getElementById('ramFree').textContent = `Free: ${freeRAM.toFixed(0)} MB`;
-      document.getElementById('ramTotal').textContent = `Total: ${totalRAM.toFixed(0)} MB`;
-
-      const appPct   = (appMem   / totalRAM * 100).toFixed(1);
-      const otherPct = (otherRAM / totalRAM * 100).toFixed(1);
-      const freePct  = (freeRAM  / totalRAM * 100).toFixed(1);
-      document.getElementById('ramAppBar').style.width   = `${appPct}%`;
-      document.getElementById('ramUsedBar').style.width  = `${otherPct}%`;
-      document.getElementById('ramFreeBar').style.width  = `${freePct}%`;
-      document.getElementById('ramAppLabel').textContent   = `${appMem.toFixed(0)} MB (${appPct}%)`;
-      document.getElementById('ramOtherLabel').textContent = `${otherRAM.toFixed(0)} MB`;
-      document.getElementById('ramFreeLabel').textContent  = `${freeRAM.toFixed(0)} MB`;
+    if (total > 0) {
+      document.getElementById('ramVal').textContent = `${used.toFixed(0)} / ${total.toFixed(0)} MB`;
+      document.getElementById('ramCap').textContent = `${(used/total*100).toFixed(1)}% Capacity`;
+      document.getElementById('ramAppSeg').style.width = `${(mem/total*100).toFixed(1)}%`;
+      document.getElementById('ramOtherSeg').style.width = `${(other/total*100).toFixed(1)}%`;
+      document.getElementById('ramFreeSeg').style.width = `${(free/total*100).toFixed(1)}%`;
+      document.getElementById('ramAppMB').textContent = `${mem.toFixed(0)}MB`;
+      document.getElementById('ramOtherMB').textContent = `${other.toFixed(0)}MB`;
+      document.getElementById('ramFreeMB').textContent = `${free.toFixed(0)}MB`;
     }
-
-    // Health score
-    const memRatio = totalRAM > 0 ? appMem / totalRAM : appMem / 1000;
-    let score = 100;
-    if (memRatio > 0.4)      score -= 35;
-    else if (memRatio > 0.2) score -= 15;
-    else if (memRatio > 0.1) score -= 5;
-    if (cpu > 80)      score -= 30;
-    else if (cpu > 50) score -= 15;
-    else if (cpu > 30) score -= 5;
-    if (fps < 30)      score -= 20;
-    else if (fps < 50) score -= 10;
-    const avgLoad = screenTransitions.length
-      ? screenTransitions.reduce((a,b) => a + (b.transitionMs || 0), 0) / screenTransitions.length : 0;
-    if (avgLoad > 1000)     score -= 15;
-    else if (avgLoad > 500) score -= 7;
-    updateHealth(Math.max(0, Math.round(score)));
   }
 
-  function setCard(id, val, color) {
+  function setVal(id, val, cls) {
     const el = document.getElementById(id);
     el.textContent = val;
-    el.className = `card-value ${color}`;
+    el.className = `card-value ${cls}`;
   }
 
-  // ── Screen Transitions ───────────────────────────────────────────────────────
+  // ── Screen ───────────────────────────────────────────────────────────────────
   function updateScreen(msg) {
-    screenCount++;
+    currentScreenName = msg.name;
+    screenStart = Date.now();
     document.getElementById('screenVal').textContent = msg.name;
-    document.getElementById('screenTime').textContent = new Date().toLocaleTimeString();
+    document.getElementById('screenActive').textContent = `⏱ Active 00:00`;
 
-    screenTransitions.unshift({
-      name: msg.name,
-      time: new Date().toLocaleTimeString(),
-      transitionMs: msg.transitionMs ?? null,   // loading time (viewDidLoad → viewDidAppear)
-      dwellMs: msg.dwellMs ?? null               // time stayed on previous screen
-    });
-    if (screenTransitions.length > 30) screenTransitions.pop();
+    const loadMs = msg.transitionMs ?? null;
+    const stayMs = msg.dwellMs ?? null;
+    const loadCls = loadMs === null ? '' : loadMs < 300 ? 'fast' : loadMs < 800 ? 'warn' : 'slow';
+    const stayFmt = stayMs ? fmtDuration(stayMs) : '--';
+    const status = loadMs === null ? 'closed' : loadMs < 800 ? 'active' : 'latency';
 
-    renderScreenList();
-    addEvent('screen', `→ ${msg.name}${msg.transitionMs ? ` (load: ${msg.transitionMs}ms)` : ''}`);
+    screenRows.unshift({ name: msg.name, loadMs, loadCls, stayFmt, status, time: new Date().toLocaleTimeString() });
+    if (screenRows.length > 10) screenRows.pop();
+    renderScreenTable();
+
+    addEventEntry('green', new Date().toLocaleTimeString(), 'SCREEN_DID_LOAD', `Initialized ${msg.name}`);
   }
 
-  function renderScreenList() {
-    document.getElementById('screenList').innerHTML = screenTransitions.map(s => {
-      // Loading time badge — lower is better
-      let loadBadge = '';
-      if (s.transitionMs !== null) {
-        const cls = s.transitionMs < 300 ? 'badge-green' : s.transitionMs < 800 ? 'badge-yellow' : 'badge-red';
-        loadBadge = `<span><span class="badge-label">⏱ loading </span><span class="badge ${cls}">${fmt(s.transitionMs)}</span></span>`;
-      }
-      // Stayed time badge — neutral info
-      let dwellBadge = '';
-      if (s.dwellMs !== null && s.dwellMs > 0) {
-        dwellBadge = `<span><span class="badge-label">🕐 stayed </span><span class="badge badge-blue">${fmt(s.dwellMs)}</span></span>`;
-      }
-      return `<div class="screen-item">
-        <span class="screen-name">${s.name}</span>
-        <span class="screen-time">${s.time}</span>
-        <div class="screen-badges">${loadBadge}${dwellBadge}</div>
-      </div>`;
-    }).join('');
+  function renderScreenTable() {
+    document.getElementById('screenTableBody').innerHTML = screenRows.map(r => `
+      <tr>
+        <td class="td-name">${r.name}</td>
+        <td class="td-load ${r.loadCls}">${r.loadMs !== null ? r.loadMs + 'ms' : '--'}</td>
+        <td class="td-stay">${r.stayFmt}</td>
+        <td><span class="status-badge status-${r.status}">${r.status.toUpperCase()}</span></td>
+      </tr>`).join('');
   }
 
-  function fmt(ms) { return ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`; }
+  // Active screen timer
+  setInterval(() => {
+    if (screenStart) {
+      const s = Math.floor((Date.now() - screenStart) / 1000);
+      const m = Math.floor(s / 60), sec = s % 60;
+      document.getElementById('screenActive').textContent = `⏱ Active ${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+  }, 1000);
 
-  // ── Event Log ────────────────────────────────────────────────────────────────
-  function addEvent(type, name) {
-    const time = new Date().toLocaleTimeString();
-    allEvents.unshift({ type, name, time, timestamp: new Date().toISOString() });
-    if (allEvents.length > 200) allEvents.pop();
-    document.getElementById('eventList').innerHTML = allEvents.slice(0, 50).map(e => `
-      <div class="event-item">
-        <span class="event-type ${e.type}">${e.type}</span>
-        <span style="color:#ccc">${e.name}</span>
-        <span style="margin-left:auto;color:#444;font-size:10px">${e.time}</span>
+  // ── Events ───────────────────────────────────────────────────────────────────
+  function addEvent(msg) {
+    const typeMap = { screen: 'green', network: 'blue', error: 'red', tap: 'yellow', event: 'gray' };
+    addEventEntry(typeMap[msg.eventType] || 'gray', new Date().toLocaleTimeString(), (msg.eventType || 'EVENT').toUpperCase(), msg.name || '');
+  }
+
+  function addEventEntry(color, time, name, desc) {
+    events.unshift({ color, time, name, desc });
+    if (events.length > 100) events.pop();
+    document.getElementById('eventList').innerHTML = events.slice(0, 20).map(e => `
+      <div class="event-item ${e.color}">
+        <div class="event-time">${e.time}</div>
+        <div class="event-body">
+          <div class="event-name">${e.name}</div>
+          <div class="event-desc">${e.desc}</div>
+        </div>
       </div>`).join('');
   }
 
-  // ── Crashes & ANR ────────────────────────────────────────────────────────────
-  const crashes = [];
-
-  function handleCrash(msg) {
-    const isCrash = msg.type === 'crash';
-    const isANR = msg.type === 'anr';
-
-    const entry = {
-      type: isCrash ? msg.crashType : 'anr',
-      name: isCrash ? msg.name : `ANR on ${msg.screen || 'unknown'}`,
-      reason: isCrash ? msg.reason : `Main thread blocked for ${msg.duration}ms`,
-      stackTrace: msg.stackTrace || '',
-      time: new Date().toLocaleTimeString(),
-      timestamp: new Date().toISOString()
-    };
-
-    crashes.unshift(entry);
-    updateCrashStats();
-    renderCrashes();
-
-    // Flash crash badge red
-    const badge = document.getElementById('crashBadge');
-    badge.textContent = crashes.length;
-    badge.style.background = '#ef4444';
-
-    // Also add to event log
-    addEvent(isANR ? 'error' : 'error', `${entry.name}: ${entry.reason}`);
+  // ── Network ──────────────────────────────────────────────────────────────────
+  function addNetCall(msg) {
+    netCalls.unshift({ method: msg.method || 'GET', url: msg.url || '', status: msg.status || 0,
+      duration: msg.duration || 0, size: msg.size || 0, action: msg.action || '',
+      time: new Date().toLocaleTimeString(), timestamp: new Date().toISOString() });
+    if (netCalls.length > 200) netCalls.pop();
+    updateNetStats();
+    renderNetTable();
+    addEventEntry('blue', new Date().toLocaleTimeString(), 'API_REQUEST_' + (msg.status >= 400 ? 'ERROR' : 'SUCCESS'),
+      `${msg.method} ${tryPath(msg.url)} — ${msg.status} OK (${msg.duration}ms)`);
   }
 
-  function updateCrashStats() {
-    document.getElementById('crashTotal').textContent = crashes.length;
-    document.getElementById('crashExceptions').textContent = crashes.filter(c => c.type === 'exception').length;
-    document.getElementById('crashSignals').textContent = crashes.filter(c => c.type === 'signal').length;
-    document.getElementById('crashANRs').textContent = crashes.filter(c => c.type === 'anr').length;
+  function updateNetStats() {
+    const total = netCalls.length;
+    const avg = total ? Math.round(netCalls.reduce((a,b)=>a+b.duration,0)/total) : 0;
+    const slowest = total ? netCalls.reduce((a,b) => b.duration > a.duration ? b : a, netCalls[0]) : null;
+    const errors = netCalls.filter(c => c.status >= 400 || c.status === 0).length;
+    document.getElementById('netTotal').textContent = total;
+    document.getElementById('netToday').textContent = `+${total} today`;
+    document.getElementById('netBar').style.width = `${Math.min(total, 100)}%`;
+    document.getElementById('netAvg').innerHTML = `${avg} <span style="font-size:14px;color:#64748b">MS</span>`;
+    document.getElementById('netSlowest').innerHTML = slowest ? `${slowest.duration} <span style="font-size:14px;color:#64748b">MS</span>` : '--';
+    document.getElementById('netSlowestURL').textContent = slowest ? tryPath(slowest.url) : '--';
+    document.getElementById('netErrors').textContent = errors;
+    document.getElementById('netErrors').className = `card-value ${errors > 0 ? 'red' : 'green'}`;
+    document.getElementById('netHealth').textContent = errors > 0 ? `● ${errors} Error(s)` : '● Live Monitoring Active';
+    document.getElementById('netHealth').style.color = errors > 0 ? '#f87171' : '#4ade80';
   }
 
-  function renderCrashes() {
-    document.getElementById('crashList').innerHTML = crashes.map(c => {
-      const isANR = c.type === 'anr';
-      const color = isANR ? '#f59e0b' : '#ef4444';
-      const bg = isANR ? 'rgba(245,158,11,0.05)' : 'rgba(239,68,68,0.05)';
-      const border = isANR ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)';
-      return `<div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:14px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <span style="color:${color};font-weight:600;font-size:13px">${isANR ? '⚠️ ANR' : '💥 CRASH'} — ${c.name}</span>
-          <span style="color:#475569;font-size:11px">${c.time}</span>
-        </div>
-        <div style="color:#94a3b8;font-size:12px;margin-bottom:${c.stackTrace ? '10px' : '0'}">${c.reason}</div>
-        ${c.stackTrace ? `<pre style="color:#64748b;font-size:10px;font-family:monospace;overflow-x:auto;background:#0d0f13;padding:10px;border-radius:6px;margin:0">${c.stackTrace}</pre>` : ''}
-      </div>`;
-    }).join('');
-  }
-
-  function exportCrashCSV() {
-    const rows = [['Timestamp','Type','Name','Reason','StackTrace']];
-    crashes.forEach(c => rows.push([c.timestamp, c.type, c.name, c.reason, c.stackTrace.replace(/\n/g,' | ')]));
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `crashes-${Date.now()}.csv`;
-    a.click();
-  }
-
-
-  function switchTab(name) {
-    document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['overview','network','crashes'][i] === name));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.getElementById(`tab-${name}`).classList.add('active');
-  }
-
-  // ── Network calls ────────────────────────────────────────────────────────────
-  const networkCalls = [];
-
-  function handleNetwork(msg) {
-    const call = {
-      method: msg.method || 'GET',
-      url: msg.url || '',
-      status: msg.status || 0,
-      duration: msg.duration || 0,
-      size: msg.size || 0,
-      action: msg.action || '',
-      time: new Date().toLocaleTimeString(),
-      timestamp: new Date().toISOString()
-    };
-    networkCalls.unshift(call);
-    if (networkCalls.length > 200) networkCalls.pop();
-
-    updateNetworkStats();
-    renderNetworkTable();
-
-    // Update badge
-    document.getElementById('netBadge').textContent = networkCalls.length;
-  }
-
-  function updateNetworkStats() {
-    const total = networkCalls.length;
-    const avg = total ? Math.round(networkCalls.reduce((a,b) => a + b.duration, 0) / total) : 0;
-    const slowest = total ? Math.max(...networkCalls.map(c => c.duration)) : 0;
-    const errors = networkCalls.filter(c => c.status >= 400 || c.status === 0).length;
-
-    document.getElementById('netTotal').textContent   = total;
-    document.getElementById('netAvg').textContent     = avg ? `${avg}ms` : '--';
-    document.getElementById('netSlowest').textContent = slowest ? `${slowest}ms` : '--';
-    document.getElementById('netErrors').textContent  = errors;
-  }
-
-  function renderNetworkTable() {
-    document.getElementById('netTableBody').innerHTML = networkCalls.map(c => {
-      const methodCls = `method-${c.method}`;
-      const statusCls = c.status >= 500 ? 'status-err' : c.status >= 400 ? 'status-warn' : c.status >= 200 ? 'status-ok' : 'status-warn';
-      const durCls = c.duration < 300 ? 'dur-fast' : c.duration < 1000 ? 'dur-med' : 'dur-slow';
-      const sizeStr = c.size > 1024 ? `${(c.size/1024).toFixed(1)}KB` : `${c.size}B`;
-
-      // Parse URL to show host + path separately
-      let host = '', path = c.url, query = '';
-      try {
-        const u = new URL(c.url);
-        host = u.hostname;
-        path = u.pathname;
-        query = u.search;
-      } catch(e) {}
-
+  function renderNetTable() {
+    const q = (document.getElementById('netSearch')?.value || '').toLowerCase();
+    const filtered = q ? netCalls.filter(c => c.url.toLowerCase().includes(q) || c.method.toLowerCase().includes(q)) : netCalls;
+    document.getElementById('netCount').textContent = `Showing ${filtered.length} of ${netCalls.length} requests`;
+    document.getElementById('netTableBody').innerHTML = filtered.map(c => {
+      const mCls = { GET:'m-get', POST:'m-post', PUT:'m-put', DELETE:'m-delete' }[c.method] || 'm-get';
+      const sCls = c.status >= 500 ? 's-err' : c.status >= 400 ? 's-warn' : 's-ok';
+      const dCls = c.duration < 300 ? 'dur-fast' : c.duration < 1000 ? 'dur-med' : 'dur-slow';
+      const dotColor = c.status >= 500 ? '#f87171' : c.status >= 400 ? '#fbbf24' : '#4ade80';
+      const path = tryPath(c.url), host = tryHost(c.url);
+      const size = c.size > 1024 ? `${(c.size/1024).toFixed(1)} KB` : `${c.size} B`;
+      const display = c.action || path;
       return `<tr>
-        <td><span class="method ${methodCls}">${c.method}</span></td>
-        <td style="max-width:280px">
-          <div style="color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.url}">${c.action ? c.action : path}</div>
-          <div style="color:#475569;font-size:10px;margin-top:2px">${host}${c.action ? '<span style="color:#334155"> · '+path+'</span>' : ''}</div>
-        </td>
-        <td class="${statusCls}">${c.status || 'ERR'}</td>
-        <td class="${durCls}" style="font-weight:500">${c.duration}ms</td>
-        <td style="color:#475569">${sizeStr}</td>
-        <td style="color:#334155">${c.time}</td>
+        <td><span class="method-badge ${mCls}">${c.method}</span></td>
+        <td><div class="net-path">${display}</div><div class="net-host">${host}</div></td>
+        <td><span class="status-dot-inline" style="background:${dotColor}"></span><span class="${sCls}">${c.status || 'ERR'} OK</span></td>
+        <td class="${dCls}">${c.duration}ms</td>
+        <td class="net-size">${size}</td>
+        <td class="net-time">${c.time}</td>
       </tr>`;
     }).join('');
   }
 
-  function exportNetworkCSV() {
-    const rows = [['Timestamp','Method','URL','Status','Duration(ms)','Size(bytes)']];
-    networkCalls.forEach(c => rows.push([c.timestamp, c.method, c.url, c.status, c.duration, c.size]));
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `network-${Date.now()}.csv`;
-    a.click();
+  // ── Crashes ──────────────────────────────────────────────────────────────────
+  let expandedCrash = null;
+
+  function addCrash(msg) {
+    const isANR = msg.type === 'anr';
+    const crash = {
+      id: Date.now(),
+      type: isANR ? 'anr' : msg.crashType,
+      name: isANR ? `ANR on ${msg.screen || 'unknown'}` : msg.name,
+      reason: isANR ? `Main thread blocked ${msg.duration}ms` : msg.reason,
+      stack: msg.stackTrace || '',
+      time: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString(),
+      // Snapshot at time of crash
+      memoryAtCrash: memH[memH.length - 1]?.toFixed(1) ?? '--',
+      cpuAtCrash: cpuH[cpuH.length - 1]?.toFixed(1) ?? '--',
+      screenAtCrash: currentScreenName,
+      recentEvents: events.slice(0, 5).map(e => `${e.time} ${e.name}: ${e.desc}`),
+      threadCount: msg.threadCount || '--',
+      deviceInfo: document.getElementById('liveText').textContent
+    };
+    crashes.unshift(crash);
+    document.getElementById('crashTotal').textContent = crashes.length;
+    document.getElementById('crashExc').textContent = crashes.filter(c=>c.type==='exception').length;
+    document.getElementById('crashSig').textContent = crashes.filter(c=>c.type==='signal').length;
+    document.getElementById('crashANR').textContent = crashes.filter(c=>c.type==='anr').length;
+    renderCrashes();
+    addEventEntry('red', crash.time, isANR ? 'ANR_DETECTED' : 'CRASH_DETECTED', `${crash.name}: ${crash.reason}`);
   }
 
-  function exportCSV() {
-    const rows = [['Timestamp','Type','Event']];
-    allEvents.forEach(e => rows.push([e.timestamp, e.type, e.name]));
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  function renderCrashes() {
+    if (crashes.length === 0) {
+      document.getElementById('crashList').innerHTML = `
+        <div class="crash-empty">
+          <div style="font-size:48px;margin-bottom:12px">✓</div>
+          <div style="font-size:16px;font-weight:600;color:#4ade80;margin-bottom:6px">No Crashes Detected</div>
+          <div>Your app is running healthy</div>
+        </div>`;
+      return;
+    }
+    document.getElementById('crashList').innerHTML = crashes.map(c => {
+      const isANR = c.type === 'anr';
+      const isExpanded = expandedCrash === c.id;
+      const borderColor = isANR ? 'rgba(251,191,36,.3)' : 'rgba(248,113,113,.3)';
+      const nameColor = isANR ? '#fbbf24' : '#f87171';
+      const icon = isANR ? '⚠' : '💥';
+      return `
+        <div class="crash-item" style="border-color:${borderColor};cursor:pointer;transition:all .2s" onclick="toggleCrash(${c.id})">
+          <div class="crash-header">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="color:${nameColor};font-size:13px;font-weight:600">${icon} ${isANR ? 'ANR' : 'CRASH'} — ${c.name}</span>
+              <span style="background:${isANR?'rgba(251,191,36,.1)':'rgba(248,113,113,.1)'};color:${nameColor};font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;border:1px solid ${borderColor}">${c.type.toUpperCase()}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="crash-time">${c.time}</div>
+              <div style="color:#475569;font-size:12px;transition:transform .2s;transform:rotate(${isExpanded?'180':'0'}deg)">▼</div>
+            </div>
+          </div>
+          <div class="crash-reason">${c.reason}</div>
+
+          ${isExpanded ? `
+          <div style="margin-top:14px;border-top:1px solid #1e2330;padding-top:14px">
+
+            <!-- Snapshot row -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+              <div style="background:#0d0f14;border-radius:8px;padding:10px;border:1px solid #1e2330">
+                <div style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Memory at Crash</div>
+                <div style="font-size:18px;font-weight:700;color:#f87171">${c.memoryAtCrash} MB</div>
+              </div>
+              <div style="background:#0d0f14;border-radius:8px;padding:10px;border:1px solid #1e2330">
+                <div style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">CPU at Crash</div>
+                <div style="font-size:18px;font-weight:700;color:#fbbf24">${c.cpuAtCrash}%</div>
+              </div>
+              <div style="background:#0d0f14;border-radius:8px;padding:10px;border:1px solid #1e2330">
+                <div style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Active Screen</div>
+                <div style="font-size:12px;font-weight:600;color:#e2e8f0;font-family:monospace;margin-top:4px">${c.screenAtCrash}</div>
+              </div>
+              <div style="background:#0d0f14;border-radius:8px;padding:10px;border:1px solid #1e2330">
+                <div style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Session</div>
+                <div style="font-size:10px;color:#64748b;margin-top:4px">${c.deviceInfo}</div>
+              </div>
+            </div>
+
+            <!-- Events before crash -->
+            ${c.recentEvents.length > 0 ? `
+            <div style="margin-bottom:14px">
+              <div style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Events Before Crash</div>
+              ${c.recentEvents.map(e => `
+                <div style="font-size:11px;font-family:monospace;color:#64748b;padding:4px 0;border-bottom:1px solid #1a1f2e">${e}</div>
+              `).join('')}
+            </div>` : ''}
+
+            <!-- Stack trace -->
+            ${c.stack ? `
+            <div>
+              <div style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Stack Trace</div>
+              <div class="crash-stack">${c.stack}</div>
+            </div>` : `
+            <div style="color:#475569;font-size:12px;font-style:italic">No stack trace available for ANR events</div>`}
+
+            <!-- Actions -->
+            <div style="display:flex;gap:8px;margin-top:14px">
+              <button onclick="copyCrash(${c.id})" style="background:#1a1f2e;border:1px solid #2d3748;border-radius:6px;padding:6px 14px;font-size:11px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Copy Report</button>
+              <button onclick="exportCrash(${c.id})" style="background:#1a1f2e;border:1px solid #2d3748;border-radius:6px;padding:6px 14px;font-size:11px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Export JSON</button>
+            </div>
+          </div>` : ''}
+        </div>`;
+    }).join('');
+  }
+
+  function toggleCrash(id) {
+    expandedCrash = expandedCrash === id ? null : id;
+    renderCrashes();
+  }
+
+  function copyCrash(id) {
+    const c = crashes.find(x => x.id === id);
+    if (!c) return;
+    const text = `CRASH REPORT\n${c.timestamp}\n\n${c.name}\n${c.reason}\n\nMemory: ${c.memoryAtCrash}MB\nCPU: ${c.cpuAtCrash}%\nScreen: ${c.screenAtCrash}\n\nStack:\n${c.stack}`;
+    navigator.clipboard.writeText(text);
+  }
+
+  function exportCrash(id) {
+    const c = crashes.find(x => x.id === id);
+    if (!c) return;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `dashboard-${Date.now()}.csv`;
-    a.click();
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(c, null, 2)], {type:'application/json'}));
+    a.download = `crash-${c.id}.json`; a.click();
+  }
+
+  // ── Analytics ─────────────────────────────────────────────────────────────
+  const taps = {};           // { screenName: [{x,y}] }
+  const userFlowList = [];   // [{screen, time, dwell}]
+  const screenDwells = {};   // { screenName: totalMs }
+  let sessionStart = Date.now();
+  let selectedHeatmapScreen = null;
+
+  // Funnel chart
+  const funnelChart = new Chart(document.getElementById('funnelChart'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: 'rgba(10,132,255,0.6)', borderRadius: 6, borderSkipped: false }] },
+    options: {
+      indexAxis: 'y',
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,.06)' }, ticks: { color: '#8e8e93', font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { color: '#fff', font: { size: 10, family: 'monospace' } } }
+      }
+    }
+  });
+
+  function handleTap(msg) {
+    const screen = msg.screen || 'unknown';
+    if (!taps[screen]) taps[screen] = [];
+    taps[screen].push({ x: msg.x, y: msg.y });
+
+    // Update total taps
+    const total = Object.values(taps).reduce((a,b) => a + b.length, 0);
+    document.getElementById('totalTaps').textContent = total;
+
+    // Update screen buttons
+    renderHeatmapButtons();
+
+    // Redraw if this screen is selected
+    if (selectedHeatmapScreen === screen) drawHeatmap(screen);
+  }
+
+  function renderHeatmapButtons() {
+    const screens = Object.keys(taps);
+    document.getElementById('uniqueScreens').textContent = screens.length;
+    document.getElementById('heatmapScreenBtns').innerHTML = screens.map(s => `
+      <button onclick="selectHeatmapScreen('${s}')"
+        style="padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid;
+               background:${selectedHeatmapScreen===s?'rgba(10,132,255,.3)':'rgba(255,255,255,.06)'};
+               color:${selectedHeatmapScreen===s?'#0a84ff':'#8e8e93'};
+               border-color:${selectedHeatmapScreen===s?'rgba(10,132,255,.5)':'rgba(255,255,255,.1)'}">
+        ${s.replace('ViewController','').replace('Controller','')} (${taps[s].length})
+      </button>`).join('');
+  }
+
+  function selectHeatmapScreen(screen) {
+    selectedHeatmapScreen = screen;
+    document.getElementById('heatmapScreen').textContent = screen;
+    renderHeatmapButtons();
+    drawHeatmap(screen);
+  }
+
+  function drawHeatmap(screen) {
+    const canvas = document.getElementById('heatmapCanvas');
+    const container = document.getElementById('heatmapContainer');
+    canvas.width = container.offsetWidth;
+    canvas.height = container.offsetHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const points = taps[screen] || [];
+    points.forEach(p => {
+      const px = p.x * canvas.width;
+      const py = p.y * canvas.height;
+      const r = 20;
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, r);
+      grad.addColorStop(0, 'rgba(255,69,58,0.6)');
+      grad.addColorStop(0.5, 'rgba(255,214,10,0.3)');
+      grad.addColorStop(1, 'rgba(10,132,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  function updateUserFlow(screenName, dwellMs) {
+    userFlowList.push({ screen: screenName, time: new Date().toLocaleTimeString(), dwell: dwellMs });
+
+    // Update dwell totals
+    screenDwells[screenName] = (screenDwells[screenName] || 0) + (dwellMs || 0);
+
+    // Render flow
+    document.getElementById('userFlow').innerHTML = userFlowList.map((f, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;${i < userFlowList.length-1 ? 'border-bottom:1px solid rgba(255,255,255,.06)' : ''}">
+        <div style="width:24px;height:24px;border-radius:50%;background:rgba(10,132,255,.2);border:1px solid rgba(10,132,255,.4);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0a84ff;flex-shrink:0">${i+1}</div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600;color:#fff;font-family:monospace">${f.screen}</div>
+          <div style="font-size:10px;color:#8e8e93">${f.time}${f.dwell ? ` · stayed ${(f.dwell/1000).toFixed(1)}s` : ''}</div>
+        </div>
+        ${i < userFlowList.length-1 ? '<div style="color:#3a3a3c;font-size:16px">↓</div>' : '<div style="color:#30d158;font-size:12px">● NOW</div>'}
+      </div>`).join('');
+
+    // Update funnel chart
+    const sorted = Object.entries(screenDwells).sort((a,b) => b[1]-a[1]).slice(0,8);
+    funnelChart.data.labels = sorted.map(([s]) => s.replace('ViewController','').replace('Controller',''));
+    funnelChart.data.datasets[0].data = sorted.map(([,v]) => Math.round(v/1000));
+    funnelChart.update();
+
+    // Session stats
+    const elapsed = Date.now() - sessionStart;
+    const m = Math.floor(elapsed/60000), s = Math.floor((elapsed%60000)/1000);
+    document.getElementById('sessionDuration').textContent = `${m}:${String(s).padStart(2,'0')}`;
+    const avgMs = Object.values(screenDwells).reduce((a,b)=>a+b,0) / Object.keys(screenDwells).length;
+    document.getElementById('avgScreenTime').textContent = `${(avgMs/1000).toFixed(1)}s`;
+  }
+
+  // Session timer
+  setInterval(() => {
+    const elapsed = Date.now() - sessionStart;
+    const m = Math.floor(elapsed/60000), s = Math.floor((elapsed%60000)/1000);
+    document.getElementById('sessionDuration').textContent = `${m}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+
+  // ── Tab switching ─────────────────────────────────────────────────────────────
+  function switchTab(name) {
+    document.querySelectorAll('.nav-tab').forEach((t,i) => t.classList.toggle('active', ['overview','network','crashes','analytics'][i]===name));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.getElementById(`tab-${name}`).classList.add('active');
+    if (name === 'analytics' && selectedHeatmapScreen) drawHeatmap(selectedHeatmapScreen);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  function tryPath(url) { try { return new URL(url).pathname; } catch { return url; } }
+  function tryHost(url) { try { return new URL(url).hostname; } catch { return ''; } }
+  function fmtDuration(ms) { const s=Math.floor(ms/1000),m=Math.floor(s/60); return `${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
+
+  function exportNetCSV() {
+    const rows = [['Timestamp','Method','URL','Status','Duration(ms)','Size(bytes)']];
+    netCalls.forEach(c => rows.push([c.timestamp,c.method,c.url,c.status,c.duration,c.size]));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n')],{type:'text/csv'}));
+    a.download = `traceview-network-${Date.now()}.csv`; a.click();
   }
 </script>
 </body>
