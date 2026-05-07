@@ -75,7 +75,19 @@ Once running, you get a live view of everything happening inside your app — me
 ```
 ios-dashboard/
 ├── iOSSDK/
-│   └── AppDashboard.swift     # Drop this into your iOS app
+│   └── TraceView/                    # Drop this entire folder into your Xcode project
+│       ├── TraceView.swift           # Entry point — public API, start(), customActions
+│       ├── Core/
+│       │   ├── WebSocketManager.swift  # Connection, reconnection, message sending
+│       │   ├── MetricsCollector.swift  # Memory, CPU, FPS, battery, thermal, disk
+│       │   └── SystemInfo.swift        # Static system helpers (networkType, memoryInfo etc)
+│       └── Trackers/
+│           ├── ScreenTracker.swift     # Screen transitions, load time, dwell time
+│           ├── NetworkTracker.swift    # URLProtocol interceptor (TVURLProtocol)
+│           ├── CrashTracker.swift      # Uncaught exceptions, signals, ANR detection
+│           ├── TapTracker.swift        # Tap heatmap coordinates
+│           ├── LeakDetector.swift      # ViewController leak detection
+│           └── DebugInspector.swift    # UserDefaults, Keychain, VC Stack, Notifications
 ├── server/
 │   ├── index.js               # Node.js WebSocket server
 │   └── package.json
@@ -122,13 +134,19 @@ ngrok http 4000
 
 ### 3. Add to your iOS app
 
-Drop `AppDashboard.swift` into your Xcode project, then:
+Drag the entire `iOSSDK/TraceView/` folder into your Xcode project (check "Copy items if needed"), then:
 
 ```swift
 // AppDelegate.swift
 func application(_ application: UIApplication,
                  didFinishLaunchingWithOptions launchOptions: ...) -> Bool {
-    AppDashboard.shared.start()
+
+    TraceView.shared.candidateURLs = [
+        "ws://localhost:4000?type=ios",        // USB cable (Xcode debug)
+        "ws://YOUR_MAC_IP:4000?type=ios",      // Same WiFi
+        "wss://YOUR_NGROK_URL?type=ios"        // Any network via ngrok
+    ]
+    TraceView.shared.start()
     return true
 }
 ```
@@ -148,7 +166,7 @@ If your app uses a custom URLSession, inject the protocol:
 
 ```swift
 let config = URLSessionConfiguration.default
-config.protocolClasses = [DashboardURLProtocol.self] + (config.protocolClasses ?? [])
+config.protocolClasses = [TVURLProtocol.self] + (config.protocolClasses ?? [])
 let session = URLSession(configuration: config, delegate: yourDelegate, delegateQueue: nil)
 ```
 
@@ -163,8 +181,21 @@ http://localhost:4000
 ## Manual Tracking
 
 ```swift
-AppDashboard.shared.trackEvent("Button tapped", type: "tap")
-AppDashboard.shared.trackError("Login failed: invalid token")
+TraceView.shared.trackEvent("Button tapped", type: "tap")
+TraceView.shared.trackError("Login failed: invalid token")
+
+// WebSocket tracking
+TraceView.shared.trackWebSocketConnected(url: "wss://api.example.com/ws")
+TraceView.shared.trackWebSocketSent(url: "wss://api.example.com/ws", message: payload)
+TraceView.shared.trackWebSocketReceived(url: "wss://api.example.com/ws", message: response)
+
+// Custom debug actions (appear in Debug tab)
+TraceView.shared.customActions = [
+    .init(title: "Clear Cache") { URLCache.shared.removeAllCachedResponses() },
+    .init(title: "Reset Defaults") {
+        UserDefaults.standard.removePersistentDomain(forName: Bundle.main.bundleIdentifier!)
+    }
+]
 ```
 
 ---
