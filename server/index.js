@@ -45,6 +45,16 @@ wss.on('connection', (ws, req) => {
     dashboardClients.add(ws);
     console.log(`🖥️  Dashboard connected (${dashboardClients.size} total)`);
 
+    // Handle messages from dashboard (e.g. runAction)
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'runAction' && iosClient?.readyState === 1) {
+          iosClient.send(JSON.stringify(msg));
+        }
+      } catch(e) {}
+    });
+
     ws.on('close', () => {
       dashboardClients.delete(ws);
     });

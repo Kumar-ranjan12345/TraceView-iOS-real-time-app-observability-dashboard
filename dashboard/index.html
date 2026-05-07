@@ -619,11 +619,46 @@
     </div>
   </div>
 
-  <!-- Notification Log -->
+  <!-- Keychain + WebSocket + Leaks + Custom Actions row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+
+    <!-- Keychain Inspector -->
+    <div class="section-card">
+      <div class="section-title">Keychain Inspector</div>
+      <div class="section-sub">Stored keychain items (keys only)</div>
+      <div id="keychainList" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <!-- WebSocket Inspector -->
+    <div class="section-card">
+      <div class="section-title">WebSocket Inspector</div>
+      <div class="section-sub">WS messages this session</div>
+      <div id="wsLog" style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:11px;display:flex;flex-direction:column;gap:3px"></div>
+    </div>
+
+  </div>
+
+  <!-- Memory Leaks -->
   <div class="section-card" style="margin-top:12px">
-    <div class="section-title">Notification Center Log</div>
-    <div class="section-sub">NotificationCenter.post events</div>
-    <div id="notifLog" style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:11px;display:flex;flex-direction:column;gap:3px"></div>
+    <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div class="section-title">Memory Leak Detector</div>
+        <div class="section-sub">ViewControllers retained after dismiss</div>
+      </div>
+      <span id="leakCount" style="background:rgba(255,69,58,.15);color:#ff453a;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">0 leaks</span>
+    </div>
+    <div id="leakList" style="display:flex;flex-direction:column;gap:6px">
+      <div style="color:#8e8e93;font-size:12px;text-align:center;padding:20px">✅ No leaks detected</div>
+    </div>
+  </div>
+
+  <!-- Custom Actions -->
+  <div class="section-card" style="margin-top:12px">
+    <div class="section-title">Custom Debug Actions</div>
+    <div class="section-sub">Register via AppDashboard.shared.customActions</div>
+    <div id="customActions" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+      <div style="color:#8e8e93;font-size:12px">No custom actions registered</div>
+    </div>
   </div>
 
 </div>
@@ -788,6 +823,10 @@
     if (msg.type === 'userDefaults')  updateUserDefaults(msg.data);
     if (msg.type === 'vcStack')       updateVCStack(msg.stack);
     if (msg.type === 'notification')  addNotifLog(msg.name);
+    if (msg.type === 'keychain')      updateKeychain(msg.items);
+    if (msg.type === 'websocket')     addWSLog(msg);
+    if (msg.type === 'leak')          addLeak(msg);
+    if (msg.type === 'customActions') updateCustomActions(msg.actions);
     if (msg.type === 'crash' || msg.type === 'anr') addCrash(msg);
   }
 
@@ -1214,7 +1253,67 @@
     document.getElementById('sessionDuration').textContent = `${m}:${String(s).padStart(2,'0')}`;
   }, 1000);
 
-  // ── Tab switching ─────────────────────────────────────────────────────────────
+  // ── Keychain ──────────────────────────────────────────────────────────────
+  function updateKeychain(items) {
+    if (!items || items.length === 0) {
+      document.getElementById('keychainList').innerHTML = '<div style="color:#8e8e93;font-size:12px;text-align:center;padding:20px">No keychain items found</div>';
+      return;
+    }
+    document.getElementById('keychainList').innerHTML = items.map(item => `
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:11px;font-weight:600;color:#fff;font-family:monospace">${item.account || item.service || 'unknown'}</div>
+        <div style="font-size:10px;color:#8e8e93;margin-top:2px">${item.service || ''} ${item.label ? '· '+item.label : ''}</div>
+      </div>`).join('');
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────────────────────
+  const wsMessages = [];
+  function addWSLog(msg) {
+    wsMessages.unshift(msg);
+    if (wsMessages.length > 100) wsMessages.pop();
+    const dirColors = { sent:'#0a84ff', received:'#30d158', connected:'#ffd60a', disconnected:'#ff453a' };
+    const dirIcons = { sent:'↑', received:'↓', connected:'⚡', disconnected:'✕' };
+    document.getElementById('wsLog').innerHTML = wsMessages.map(m => `
+      <div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        <span style="color:${dirColors[m.direction]||'#8e8e93'};font-weight:700">${dirIcons[m.direction]||'·'} ${m.direction?.toUpperCase()}</span>
+        <span style="color:#8e8e93;margin-left:6px;font-size:10px">${tryPath(m.url)}</span>
+        <div style="color:#e2e8f0;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.message}</div>
+      </div>`).join('');
+  }
+
+  // ── Memory Leaks ──────────────────────────────────────────────────────────
+  const leaks = [];
+  function addLeak(msg) {
+    leaks.unshift({ name: msg.vcName, retainedFor: msg.retainedFor, time: new Date().toLocaleTimeString() });
+    document.getElementById('leakCount').textContent = `${leaks.length} leak${leaks.length !== 1 ? 's' : ''}`;
+    document.getElementById('leakList').innerHTML = leaks.map(l => `
+      <div style="background:rgba(255,69,58,.08);border:1px solid rgba(255,69,58,.2);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#ff453a;font-family:monospace">${l.name}</div>
+          <div style="font-size:10px;color:#8e8e93;margin-top:2px">Retained ${l.retainedFor}s after dismiss · ${l.time}</div>
+        </div>
+        <div style="font-size:20px">🔴</div>
+      </div>`).join('');
+    // Also add to event log
+    addEventEntry('red', new Date().toLocaleTimeString(), 'MEMORY_LEAK', `${msg.vcName} retained ${msg.retainedFor}s after dismiss`);
+  }
+
+  // ── Custom Actions ────────────────────────────────────────────────────────
+  function updateCustomActions(actions) {
+    if (!actions || actions.length === 0) return;
+    document.getElementById('customActions').innerHTML = actions.map(a => `
+      <button onclick="runCustomAction('${a}')"
+        style="padding:8px 16px;border-radius:8px;background:rgba(10,132,255,.15);border:1px solid rgba(10,132,255,.3);color:#0a84ff;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">
+        ${a}
+      </button>`).join('');
+  }
+
+  function runCustomAction(title) {
+    // Send to iOS app to execute
+    ws.send(JSON.stringify({ type: 'runAction', title }));
+  }
+
+
   function switchTab(name) {
     document.querySelectorAll('.nav-tab').forEach((t,i) => t.classList.toggle('active', ['overview','network','crashes','analytics'][i]===name));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
