@@ -40,6 +40,12 @@ class TVURLProtocol: URLProtocol {
             let reqHeaders = self.request.allHTTPHeaderFields ?? [:]
             let action = reqHeaders["grpc-method"] ?? reqHeaders["x-action"] ?? reqHeaders["x-grpc-action"] ?? ""
 
+            // Capture request body to extract action
+            var requestBody = ""
+            if let body = self.request.httpBody, let str = String(data: body, encoding: .utf8) {
+                requestBody = String(str.prefix(2048))
+            }
+
             // Response headers
             let resHeaders = (response as? HTTPURLResponse)?.allHeaderFields
                 .reduce(into: [String:String]()) {
@@ -61,6 +67,7 @@ class TVURLProtocol: URLProtocol {
                 "size": size,
                 "action": action,
                 "requestHeaders": reqHeaders,
+                "requestBody": requestBody,
                 "responseHeaders": resHeaders,
                 "responseBody": responseBody
             ])

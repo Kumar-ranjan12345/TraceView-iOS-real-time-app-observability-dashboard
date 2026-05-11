@@ -990,8 +990,8 @@
   function addNetCall(msg) {
     netCalls.unshift({ method: msg.method || 'GET', url: msg.url || '', status: msg.status || 0,
       duration: msg.duration || 0, size: msg.size || 0, action: msg.action || '',
-      requestHeaders: msg.requestHeaders || {}, responseHeaders: msg.responseHeaders || {},
-      responseBody: msg.responseBody || '',
+      requestHeaders: msg.requestHeaders || {}, requestBody: msg.requestBody || '',
+      responseHeaders: msg.responseHeaders || {}, responseBody: msg.responseBody || '',
       id: Date.now(), time: new Date().toLocaleTimeString(), timestamp: new Date().toISOString() });
     if (netCalls.length > 200) netCalls.pop();
     updateNetStats();
@@ -1028,10 +1028,32 @@
       const dotColor = c.status >= 500 ? '#f87171' : c.status >= 400 ? '#fbbf24' : '#4ade80';
       const path = tryPath(c.url), host = tryHost(c.url);
       const size = c.size > 1024 ? `${(c.size/1024).toFixed(1)} KB` : `${c.size} B`;
-      const display = c.action || path;
+
+      // Extract action from response body OR request body header
+      let actionLabel = c.action || '';
+      if (!actionLabel) {
+        // Try response body first
+        if (c.responseBody) {
+          try {
+            const parsed = JSON.parse(c.responseBody);
+            actionLabel = parsed?.header?.action || parsed?.action || '';
+          } catch {}
+        }
+        // Try request body if response didn't have it
+        if (!actionLabel && c.requestBody) {
+          try {
+            const parsed = JSON.parse(c.requestBody);
+            actionLabel = parsed?.header?.action || parsed?.action || '';
+          } catch {}
+        }
+      }
+      const display = path;
+      const subtitle = actionLabel
+        ? `<span style="color:#ffd60a;font-size:10px;font-weight:600">${actionLabel}</span> <span style="color:#8e8e93;font-size:10px">· ${host}</span>`
+        : `<span style="color:#8e8e93;font-size:10px">${host}</span>`;
       return `<tr style="cursor:pointer" onclick="toggleNetDetail(${c.id})">
         <td><span class="method-badge ${mCls}">${c.method}</span></td>
-        <td><div class="net-path">${display}</div><div class="net-host">${host}</div></td>
+        <td><div class="net-path">${display}</div><div class="net-host">${subtitle}</div></td>
         <td><span class="status-dot-inline" style="background:${dotColor}"></span><span class="${sCls}">${c.status || 'ERR'} OK</span></td>
         <td class="${dCls}">${c.duration}ms</td>
         <td class="net-size">${size}</td>
@@ -1039,24 +1061,74 @@
       </tr>
       <tr id="net-detail-${c.id}" style="display:none">
         <td colspan="6" style="padding:0 0 12px 0">
-          <div style="background:rgba(0,0,0,.3);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,.06);margin-top:4px">
-            ${c.requestHeaders && Object.keys(c.requestHeaders).length ? `
-              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Request Headers</div>
-              <div style="font-family:monospace;font-size:10px;color:#94a3b8;margin-bottom:12px;max-height:80px;overflow-y:auto;background:rgba(0,0,0,.2);padding:8px;border-radius:6px">
-                ${Object.entries(c.requestHeaders).map(([k,v])=>`<div><span style="color:#0a84ff">${k}</span>: ${v}</div>`).join('')}
-              </div>` : ''}
-            ${c.responseHeaders && Object.keys(c.responseHeaders).length ? `
-              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Response Headers</div>
-              <div style="font-family:monospace;font-size:10px;color:#94a3b8;margin-bottom:12px;max-height:80px;overflow-y:auto;background:rgba(0,0,0,.2);padding:8px;border-radius:6px">
-                ${Object.entries(c.responseHeaders).map(([k,v])=>`<div><span style="color:#30d158">${k}</span>: ${v}</div>`).join('')}
-              </div>` : ''}
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Response Body</div>
-              ${c.responseBody ? `<button onclick="navigator.clipboard.writeText(netCalls.find(x=>x.id===${c.id})?.responseBody||'')" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:2px 8px;font-size:10px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Copy</button>` : ''}
+          <div style="background:rgba(0,0,0,.3);border-radius:10px;border:1px solid rgba(255,255,255,.06);margin-top:4px;overflow:hidden">
+
+            <!-- Tab bar -->
+            <div style="display:flex;border-bottom:1px solid rgba(255,255,255,.08)">
+              ${['Summary','Request','Response'].map((tab,i) => `
+                <div onclick="switchNetTab(${c.id},'${tab.toLowerCase()}')"
+                  id="ntab-${c.id}-${tab.toLowerCase()}"
+                  style="padding:8px 16px;font-size:11px;font-weight:600;cursor:pointer;color:${i===0?'#fff':'#8e8e93'};border-bottom:2px solid ${i===0?'#0a84ff':'transparent'};transition:all .15s">
+                  ${tab}
+                </div>`).join('')}
             </div>
-            ${c.responseBody
-              ? `<pre style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-size:10px;font-family:monospace;color:#e2e8f0;overflow:auto;max-height:200px;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(tryFormatJSON(c.responseBody))}</pre>`
-              : '<div style="color:#8e8e93;font-size:11px;font-style:italic">No response body captured</div>'}
+
+            <!-- Summary tab -->
+            <div id="npanel-${c.id}-summary" style="padding:14px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+                <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px">
+                  <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Status</div>
+                  <div style="font-size:16px;font-weight:700;color:${c.status>=400?'#f87171':'#30d158'}">${c.status || 'ERR'} ${c.status===200?'OK':c.status===201?'Created':c.status===404?'Not Found':c.status===500?'Server Error':''}</div>
+                </div>
+                <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px">
+                  <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Duration</div>
+                  <div style="font-size:16px;font-weight:700;color:${c.duration<300?'#30d158':c.duration<1000?'#ffd60a':'#f87171'}">${c.duration} ms</div>
+                </div>
+                <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px">
+                  <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Size</div>
+                  <div style="font-size:14px;font-weight:600;color:#fff">${size}</div>
+                </div>
+                <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px">
+                  <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Action</div>
+                  <div style="font-size:13px;font-weight:600;color:#ffd60a;font-family:monospace">${actionLabel || '—'}</div>
+                </div>
+              </div>
+              <div style="font-size:10px;color:#8e8e93;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Full URL</div>
+              <div style="background:rgba(0,0,0,.2);border-radius:6px;padding:8px;font-family:monospace;font-size:11px;color:#e2e8f0;word-break:break-all">${c.url}</div>
+            </div>
+
+            <!-- Request tab -->
+            <div id="npanel-${c.id}-request" style="padding:14px;display:none">
+              ${c.requestBody ? `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Request Body</div>
+                  <button onclick="navigator.clipboard.writeText(netCalls.find(x=>x.id===${c.id})?.requestBody||'')" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:2px 8px;font-size:10px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Copy</button>
+                </div>
+                <pre style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-size:10px;font-family:monospace;color:#e2e8f0;overflow-y:auto;overflow-x:hidden;max-height:300px;white-space:pre-wrap;word-break:break-word;margin:0 0 12px">${escHtml(tryFormatJSON(c.requestBody))}</pre>
+              ` : '<div style="color:#8e8e93;font-size:11px;font-style:italic;margin-bottom:12px">No request body</div>'}
+              ${c.requestHeaders && Object.keys(c.requestHeaders).length ? `
+                <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Request Headers</div>
+                <div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px;font-family:monospace;font-size:10px;color:#94a3b8;max-height:200px;overflow-y:auto;word-break:break-word">
+                  ${Object.entries(c.requestHeaders).map(([k,v])=>`<div style="padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:#0a84ff">${k}</span>: ${escHtml(String(v))}</div>`).join('')}
+                </div>` : ''}
+            </div>
+
+            <!-- Response tab -->
+            <div id="npanel-${c.id}-response" style="padding:14px;display:none">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Response Body</div>
+                ${c.responseBody ? `<button onclick="navigator.clipboard.writeText(netCalls.find(x=>x.id===${c.id})?.responseBody||'')" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:2px 8px;font-size:10px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Copy</button>` : ''}
+              </div>
+              ${c.responseBody
+                ? `<pre style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-size:10px;font-family:monospace;color:#e2e8f0;overflow-y:auto;overflow-x:hidden;max-height:300px;white-space:pre-wrap;word-break:break-word;margin:0 0 12px">${escHtml(tryFormatJSON(c.responseBody))}</pre>`
+                : '<div style="color:#8e8e93;font-size:11px;font-style:italic;margin-bottom:12px">No response body</div>'}
+              ${c.responseHeaders && Object.keys(c.responseHeaders).length ? `
+                <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Response Headers</div>
+                <div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px;font-family:monospace;font-size:10px;color:#94a3b8;max-height:200px;overflow-y:auto;word-break:break-word">
+                  ${Object.entries(c.responseHeaders).map(([k,v])=>`<div style="padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="color:#30d158">${k}</span>: ${escHtml(String(v))}</div>`).join('')}
+                </div>` : ''}
+            </div>
+
           </div>
         </td>
       </tr>`;
@@ -1528,6 +1600,18 @@
   function toggleNetDetail(id) {
     const row = document.getElementById(`net-detail-${id}`);
     if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+  }
+
+  function switchNetTab(id, tab) {
+    ['summary','request','response'].forEach(t => {
+      const panel = document.getElementById(`npanel-${id}-${t}`);
+      const tabEl = document.getElementById(`ntab-${id}-${t}`);
+      if (panel) panel.style.display = t === tab ? 'block' : 'none';
+      if (tabEl) {
+        tabEl.style.color = t === tab ? '#fff' : '#8e8e93';
+        tabEl.style.borderBottomColor = t === tab ? '#0a84ff' : 'transparent';
+      }
+    });
   }
 
   function tryFormatJSON(str) {
