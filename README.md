@@ -1,15 +1,33 @@
 # TraceView
 ### iOS Real-time App Observability & Performance Dashboard
 
-> Drop one Swift file into your iOS app. Get a live performance dashboard in your browser — no Xcode Instruments needed.
+> Add via Swift Package Manager or drag the folder. Get a live performance dashboard in your browser — no Xcode Instruments needed.
 
 ---
 
 ## What is TraceView?
 
-TraceView is a lightweight real-time observability tool for iOS apps. It consists of a single Swift SDK file (`AppDashboard.swift`) that you drop into any iOS project, and a Node.js server that powers a browser-based dashboard.
+TraceView is a lightweight real-time observability tool for iOS apps. It consists of a modular Swift SDK that you add to any iOS project, and a Node.js server that powers a browser-based dashboard.
 
-Once running, you get a live view of everything happening inside your app — memory, CPU, FPS, network calls, screen transitions, crashes, ANRs, console logs, UserDefaults, and more — all in one place, shareable with your team.
+Once running, you get a live view of everything happening inside your app — memory, CPU, FPS, network calls, screen transitions, crashes, ANRs, console logs, UserDefaults, tap heatmaps, and more — all in one place, shareable with your team.
+
+---
+
+## Installation
+
+### Option 1 — Swift Package Manager (Recommended)
+
+In Xcode → **File → Add Package Dependencies** → paste:
+
+```
+https://github.com/Kumar-ranjan12345/TraceView-iOS-real-time-app-observability-dashboard
+```
+
+Select version `1.0.0` → Add Package.
+
+### Option 2 — Drag & Drop
+
+Drag the entire `ios-dashboard/iOSSDK/TraceView/` folder into your Xcode project (check "Copy items if needed").
 
 ---
 
@@ -29,6 +47,7 @@ Once running, you get a live view of everything happening inside your app — me
 
 ### 🌐 Network
 - All API calls intercepted automatically via URLProtocol
+- Click any row to expand — shows request headers, response headers, response body (JSON formatted)
 - Method badges (GET/POST/PUT/DELETE) with color coding
 - Status code, response time (green/yellow/red), response size
 - gRPC support — reads action name from request headers
@@ -40,9 +59,10 @@ Once running, you get a live view of everything happening inside your app — me
 - Uncaught exception reporting with stack trace (first 15 frames)
 - Signal crash detection (SIGSEGV, SIGABRT, SIGILL, SIGFPE, SIGBUS)
 - ANR detection — alerts when main thread blocks > 2 seconds with stack trace
+- **Crash persistence** — crashes saved to disk, sent on next launch even if app was killed
+- Memory Leak Detector — ViewControllers retained after dismiss with How to Fix guidance
 - Click to expand — shows memory/CPU snapshot at crash time, last 5 events before crash, full stack trace
 - Copy Report + Export JSON per crash
-- Export all crashes to CSV
 
 ### 📊 Analytics (Mixpanel-style)
 - **Tap Heatmap** — visual heat dots showing where users tap per screen
@@ -51,10 +71,15 @@ Once running, you get a live view of everything happening inside your app — me
 - **Session stats** — total taps, unique screens, session duration, avg screen time
 
 ### 🐛 Debug
-- **Console Log Viewer** — captures `print()` output from the app, streamed live. Filter by All/Error/Warn. Clear button
-- **View Controller Stack** — live navigation hierarchy showing current VC tree
+- **Console Log Viewer** — captures `print()` output, filter by All/Error/Warn
+- **View Controller Stack** — live navigation hierarchy with depth colors
 - **UserDefaults Inspector** — all app key-value pairs with search/filter
+- **Keychain Inspector** — stored keychain items (keys only, not values)
+- **WebSocket Inspector** — WS messages sent/received this session
 - **Notification Center Log** — every `NotificationCenter.post` event
+- **APNS Token** — push notification device token (click to copy)
+- **Thread Violations** — UIKit called on background thread with stack trace
+- **Custom Debug Actions** — register your own buttons via `TraceView.shared.customActions`
 
 ---
 
@@ -67,32 +92,36 @@ Once running, you get a live view of everything happening inside your app — me
 - **Thermal state** — nominal/fair/serious/critical
 - **Thread count** — active threads
 - **Disk usage** — free / total in GB
+- **App lifecycle** — foreground/background/terminate events
 
 ---
 
 ## Project Structure
 
 ```
-ios-dashboard/
-├── iOSSDK/
-│   └── TraceView/                    # Drop this entire folder into your Xcode project
-│       ├── TraceView.swift           # Entry point — public API, start(), customActions
-│       ├── Core/
-│       │   ├── WebSocketManager.swift  # Connection, reconnection, message sending
-│       │   ├── MetricsCollector.swift  # Memory, CPU, FPS, battery, thermal, disk
-│       │   └── SystemInfo.swift        # Static system helpers (networkType, memoryInfo etc)
-│       └── Trackers/
-│           ├── ScreenTracker.swift     # Screen transitions, load time, dwell time
-│           ├── NetworkTracker.swift    # URLProtocol interceptor (TVURLProtocol)
-│           ├── CrashTracker.swift      # Uncaught exceptions, signals, ANR detection
-│           ├── TapTracker.swift        # Tap heatmap coordinates
-│           ├── LeakDetector.swift      # ViewController leak detection
-│           └── DebugInspector.swift    # UserDefaults, Keychain, VC Stack, Notifications
-├── server/
-│   ├── index.js               # Node.js WebSocket server
-│   └── package.json
-├── dashboard/
-│   └── index.html             # Browser dashboard (served by server)
+TraceView-iOS-real-time-app-observability-dashboard/
+├── Package.swift                        # SPM package definition
+├── ios-dashboard/
+│   ├── iOSSDK/
+│   │   └── TraceView/                   # SDK source (used by Package.swift)
+│   │       ├── TraceView.swift          # Entry point — public API
+│   │       ├── Core/
+│   │       │   ├── WebSocketManager.swift
+│   │       │   ├── MetricsCollector.swift
+│   │       │   └── SystemInfo.swift
+│   │       └── Trackers/
+│   │           ├── ScreenTracker.swift
+│   │           ├── NetworkTracker.swift
+│   │           ├── CrashTracker.swift
+│   │           ├── TapTracker.swift
+│   │           ├── LeakDetector.swift
+│   │           ├── DebugInspector.swift
+│   │           └── AppLifecycleTracker.swift
+│   ├── server/
+│   │   ├── index.js                     # Node.js WebSocket server
+│   │   └── package.json
+│   └── dashboard/
+│       └── index.html                   # Browser dashboard
 └── README.md
 ```
 
@@ -103,41 +132,18 @@ ios-dashboard/
 ### 1. Start the server
 
 ```bash
-cd server
+cd ios-dashboard/server
 npm install
-npm start
+node index.js
 # Server runs at http://localhost:4000
 ```
 
-### 2. Configure connection in AppDashboard.swift
-
-The SDK tries each URL in order until one connects:
-
-```swift
-private let candidateURLs: [String] = [
-    "ws://localhost:4000?type=ios",        // USB cable (Xcode debug)
-    "ws://YOUR_MAC_IP:4000?type=ios",      // Same WiFi network
-    "wss://YOUR_NGROK_URL?type=ios"        // Any network via ngrok
-]
-```
-
-**USB (recommended):** Connect iPhone via USB, run via Xcode — no shared network needed.
-
-**WiFi:** Find Mac IP with `ipconfig getifaddr en0`, replace above.
-
-**ngrok (any network):**
-```bash
-brew install ngrok
-ngrok http 4000
-# Copy the wss:// URL into candidateURLs
-```
-
-### 3. Add to your iOS app
-
-Drag the entire `iOSSDK/TraceView/` folder into your Xcode project (check "Copy items if needed"), then:
+### 2. Add to your iOS app
 
 ```swift
 // AppDelegate.swift
+import TraceView  // if using SPM
+
 func application(_ application: UIApplication,
                  didFinishLaunchingWithOptions launchOptions: ...) -> Bool {
 
@@ -160,7 +166,7 @@ Add to `Info.plist`:
 </dict>
 ```
 
-### 4. Intercept network calls
+### 3. Intercept network calls
 
 If your app uses a custom URLSession, inject the protocol:
 
@@ -170,11 +176,23 @@ config.protocolClasses = [TVURLProtocol.self] + (config.protocolClasses ?? [])
 let session = URLSession(configuration: config, delegate: yourDelegate, delegateQueue: nil)
 ```
 
-### 5. Open dashboard
+### 4. Open dashboard
 
 ```
 http://localhost:4000
 ```
+
+---
+
+## Connection Modes
+
+| Mode | Requirement | URL |
+|------|------------|-----|
+| USB | iPhone connected via cable, Xcode open | `ws://localhost:4000` |
+| WiFi | Same network | `ws://MAC_IP:4000` |
+| ngrok | Any network | `wss://xxx.ngrok-free.app` |
+
+The SDK tries each URL in order — put fastest first.
 
 ---
 
@@ -183,6 +201,11 @@ http://localhost:4000
 ```swift
 TraceView.shared.trackEvent("Button tapped", type: "tap")
 TraceView.shared.trackError("Login failed: invalid token")
+
+// APNS token
+func application(_ app: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
+    TraceView.shared.setAPNSToken(token)
+}
 
 // WebSocket tracking
 TraceView.shared.trackWebSocketConnected(url: "wss://api.example.com/ws")
@@ -200,16 +223,6 @@ TraceView.shared.customActions = [
 
 ---
 
-## Connection Modes
-
-| Mode | Requirement | URL |
-|------|------------|-----|
-| USB | iPhone connected via cable, Xcode open | `ws://localhost:4000` |
-| WiFi | Same network | `ws://MAC_IP:4000` |
-| ngrok | Any network | `wss://xxx.ngrok-free.app` |
-
----
-
 ## Accuracy vs Xcode Instruments
 
 | Metric | TraceView | Instruments |
@@ -217,14 +230,18 @@ TraceView.shared.customActions = [
 | Memory (RSS) | ✅ Exact | ✅ Exact |
 | CPU % | ✅ Same method | ✅ Hardware counters |
 | FPS | ✅ CADisplayLink | ✅ CADisplayLink |
-| Network calls | ✅ URLProtocol | ✅ Full stack |
+| Network calls + body | ✅ URLProtocol | ✅ Full stack |
 | Screen timing | ✅ viewDidLoad→Appear | ✅ Same |
 | Crash + ANR | ✅ Yes | ✅ Yes |
+| Crash persistence | ✅ Yes | ✅ Yes |
 | Console logs | ✅ Yes | ✅ Yes |
 | UserDefaults | ✅ Yes | ❌ No |
+| Keychain inspector | ✅ Yes | ❌ No |
 | Tap heatmap | ✅ Yes | ❌ No |
 | User flow | ✅ Yes | ❌ No |
-| Memory leaks | ❌ | ✅ |
+| Memory leak detector | ✅ Yes | ✅ Yes |
+| Thread violations | ✅ Yes | ✅ Yes |
+| Memory leaks (heap) | ❌ | ✅ |
 | Flame graphs | ❌ | ✅ |
 | GPU profiling | ❌ | ✅ |
 | Works without Xcode | ✅ | ❌ |
