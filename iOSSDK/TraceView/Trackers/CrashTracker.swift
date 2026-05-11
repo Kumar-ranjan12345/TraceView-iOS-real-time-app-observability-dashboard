@@ -23,7 +23,7 @@ class CrashTracker: NSObject {
                 "crashType": "exception",
                 "name": exception.name.rawValue,
                 "reason": exception.reason ?? "Unknown",
-                "stackTrace": exception.callStackSymbols.prefix(15).joined(separator: "\n")
+                "stackTrace": exception.callStackSymbols.prefix(20).joined(separator: "\n")
             ])
             Thread.sleep(forTimeInterval: 0.5)
         }

@@ -37,8 +37,20 @@ class TVURLProtocol: URLProtocol {
             let size = data?.count ?? 0
             let url = self.request.url?.absoluteString ?? ""
             let method = self.request.httpMethod ?? "GET"
-            let headers = self.request.allHTTPHeaderFields ?? [:]
-            let action = headers["grpc-method"] ?? headers["x-action"] ?? headers["x-grpc-action"] ?? ""
+            let reqHeaders = self.request.allHTTPHeaderFields ?? [:]
+            let action = reqHeaders["grpc-method"] ?? reqHeaders["x-action"] ?? reqHeaders["x-grpc-action"] ?? ""
+
+            // Response headers
+            let resHeaders = (response as? HTTPURLResponse)?.allHeaderFields
+                .reduce(into: [String:String]()) {
+                    if let k = $1.key as? String, let v = $1.value as? String { $0[k] = v }
+                } ?? [:]
+
+            // Response body (truncated to 4KB for safety)
+            var responseBody = ""
+            if let data = data, let str = String(data: data, encoding: .utf8) {
+                responseBody = String(str.prefix(4096))
+            }
 
             TraceView.shared.send([
                 "type": "network",
@@ -47,7 +59,10 @@ class TVURLProtocol: URLProtocol {
                 "status": statusCode,
                 "duration": duration,
                 "size": size,
-                "action": action
+                "action": action,
+                "requestHeaders": reqHeaders,
+                "responseHeaders": resHeaders,
+                "responseBody": responseBody
             ])
 
             if let error = error {

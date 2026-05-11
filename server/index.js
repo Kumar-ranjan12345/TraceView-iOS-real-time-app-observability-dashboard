@@ -22,6 +22,13 @@ wss.on('connection', (ws, req) => {
     iosClient = ws;
     console.log('📱 iOS app connected');
 
+    // Broadcast session clear to all dashboards — new session starting
+    dashboardClients.forEach(client => {
+      if (client.readyState === 1) {
+        client.send(JSON.stringify({ type: 'session:clear' }));
+      }
+    });
+
     ws.on('message', (data) => {
       try {
         const metric = JSON.parse(data);

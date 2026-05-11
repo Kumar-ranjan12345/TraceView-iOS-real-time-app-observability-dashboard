@@ -60,6 +60,7 @@ public class TraceView: NSObject {
         TapTracker.shared.start()
         LeakDetector.shared.start()
         DebugInspector.shared.start()
+        AppLifecycleTracker.shared.start()
         NetworkTracker.register()
         UIDevice.current.isBatteryMonitoringEnabled = true
 
@@ -82,6 +83,12 @@ public class TraceView: NSObject {
 
     public func trackError(_ error: String) {
         send(["type": "event", "eventType": "error", "name": error])
+    }
+
+    // Call from AppDelegate.didRegisterForRemoteNotificationsWithDeviceToken
+    public func setAPNSToken(_ deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        AppLifecycleTracker.shared.setAPNSToken(token)
     }
 
     public func trackWebSocketSent(url: String, message: String) {

@@ -535,7 +535,7 @@
 <!-- ══ CRASHES TAB ════════════════════════════════════════════════════════════ -->
 <div id="tab-crashes" class="tab-content">
 <div class="page">
-  <div class="net-cards" style="grid-template-columns:repeat(4,1fr)">
+  <div class="net-cards" style="grid-template-columns:repeat(5,1fr)">
     <div class="card">
       <div class="card-label">Total Crashes</div>
       <div class="card-value red" id="crashTotal">0</div>
@@ -552,7 +552,12 @@
       <div class="card-label">ANRs</div>
       <div class="card-value yellow" id="crashANR">0</div>
     </div>
+    <div class="card">
+      <div class="card-label">Memory Leaks</div>
+      <div class="card-value yellow" id="crashLeaks">0</div>
+    </div>
   </div>
+  <div id="leakCrashSection"></div>
   <div id="crashList">
     <div class="crash-empty">
       <div style="font-size:48px;margin-bottom:12px">✓</div>
@@ -655,9 +660,31 @@
   <!-- Custom Actions -->
   <div class="section-card" style="margin-top:12px">
     <div class="section-title">Custom Debug Actions</div>
-    <div class="section-sub">Register via AppDashboard.shared.customActions</div>
+    <div class="section-sub">Register via TraceView.shared.customActions</div>
     <div id="customActions" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
       <div style="color:#8e8e93;font-size:12px">No custom actions registered</div>
+    </div>
+  </div>
+
+  <!-- Notification Log + APNS + Thread Violations -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px">
+    <div class="section-card">
+      <div class="section-title">Notification Log</div>
+      <div class="section-sub">NotificationCenter.post events</div>
+      <div id="notifLog" style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px;max-height:180px;overflow-y:auto;font-family:monospace;font-size:11px;display:flex;flex-direction:column;gap:3px"></div>
+    </div>
+    <div class="section-card">
+      <div class="section-title">APNS Token</div>
+      <div class="section-sub">Push notification device token</div>
+      <div id="apnsToken" style="display:none;background:rgba(0,0,0,.3);border-radius:8px;padding:10px;font-family:monospace;font-size:10px;color:#30d158;word-break:break-all;cursor:pointer;margin-bottom:8px" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy"></div>
+      <div style="color:#8e8e93;font-size:11px">Call <code style="color:#0a84ff;font-size:10px">TraceView.shared.setAPNSToken(token)</code> in AppDelegate</div>
+    </div>
+    <div class="section-card">
+      <div class="section-title">Thread Violations</div>
+      <div class="section-sub">UIKit on background thread</div>
+      <div id="threadViolationList" style="max-height:180px;overflow-y:auto">
+        <div style="color:#8e8e93;font-size:12px;text-align:center;padding:20px">✅ No violations</div>
+      </div>
     </div>
   </div>
 
@@ -790,6 +817,11 @@
   ws.onmessage = e => handle(JSON.parse(e.data));
 
   function handle(msg) {
+    // New session — clear all previous data
+    if (msg.type === 'session:clear') {
+      clearSession();
+      return;
+    }
     if (msg.appName) {
       document.getElementById('liveText').textContent = `LIVE · iOS ${msg.iosVersion || ''} · ${msg.networkType || ''}`.toUpperCase();
       document.title = `TraceView — ${msg.appName}`;
@@ -827,6 +859,9 @@
     if (msg.type === 'websocket')     addWSLog(msg);
     if (msg.type === 'leak')          addLeak(msg);
     if (msg.type === 'customActions') updateCustomActions(msg.actions);
+    if (msg.type === 'apns')          handleAPNS(msg);
+    if (msg.type === 'threadViolation') handleThreadViolation(msg);
+    if (msg.type === 'lifecycle')     handleLifecycle(msg);
     if (msg.type === 'crash' || msg.type === 'anr') addCrash(msg);
   }
 
@@ -955,7 +990,9 @@
   function addNetCall(msg) {
     netCalls.unshift({ method: msg.method || 'GET', url: msg.url || '', status: msg.status || 0,
       duration: msg.duration || 0, size: msg.size || 0, action: msg.action || '',
-      time: new Date().toLocaleTimeString(), timestamp: new Date().toISOString() });
+      requestHeaders: msg.requestHeaders || {}, responseHeaders: msg.responseHeaders || {},
+      responseBody: msg.responseBody || '',
+      id: Date.now(), time: new Date().toLocaleTimeString(), timestamp: new Date().toISOString() });
     if (netCalls.length > 200) netCalls.pop();
     updateNetStats();
     renderNetTable();
@@ -992,13 +1029,36 @@
       const path = tryPath(c.url), host = tryHost(c.url);
       const size = c.size > 1024 ? `${(c.size/1024).toFixed(1)} KB` : `${c.size} B`;
       const display = c.action || path;
-      return `<tr>
+      return `<tr style="cursor:pointer" onclick="toggleNetDetail(${c.id})">
         <td><span class="method-badge ${mCls}">${c.method}</span></td>
         <td><div class="net-path">${display}</div><div class="net-host">${host}</div></td>
         <td><span class="status-dot-inline" style="background:${dotColor}"></span><span class="${sCls}">${c.status || 'ERR'} OK</span></td>
         <td class="${dCls}">${c.duration}ms</td>
         <td class="net-size">${size}</td>
         <td class="net-time">${c.time}</td>
+      </tr>
+      <tr id="net-detail-${c.id}" style="display:none">
+        <td colspan="6" style="padding:0 0 12px 0">
+          <div style="background:rgba(0,0,0,.3);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,.06);margin-top:4px">
+            ${c.requestHeaders && Object.keys(c.requestHeaders).length ? `
+              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Request Headers</div>
+              <div style="font-family:monospace;font-size:10px;color:#94a3b8;margin-bottom:12px;max-height:80px;overflow-y:auto;background:rgba(0,0,0,.2);padding:8px;border-radius:6px">
+                ${Object.entries(c.requestHeaders).map(([k,v])=>`<div><span style="color:#0a84ff">${k}</span>: ${v}</div>`).join('')}
+              </div>` : ''}
+            ${c.responseHeaders && Object.keys(c.responseHeaders).length ? `
+              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Response Headers</div>
+              <div style="font-family:monospace;font-size:10px;color:#94a3b8;margin-bottom:12px;max-height:80px;overflow-y:auto;background:rgba(0,0,0,.2);padding:8px;border-radius:6px">
+                ${Object.entries(c.responseHeaders).map(([k,v])=>`<div><span style="color:#30d158">${k}</span>: ${v}</div>`).join('')}
+              </div>` : ''}
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Response Body</div>
+              ${c.responseBody ? `<button onclick="navigator.clipboard.writeText(netCalls.find(x=>x.id===${c.id})?.responseBody||'')" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:2px 8px;font-size:10px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Copy</button>` : ''}
+            </div>
+            ${c.responseBody
+              ? `<pre style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-size:10px;font-family:monospace;color:#e2e8f0;overflow:auto;max-height:200px;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(tryFormatJSON(c.responseBody))}</pre>`
+              : '<div style="color:#8e8e93;font-size:11px;font-style:italic">No response body captured</div>'}
+          </div>
+        </td>
       </tr>`;
     }).join('');
   }
@@ -1253,6 +1313,72 @@
     document.getElementById('sessionDuration').textContent = `${m}:${String(s).padStart(2,'0')}`;
   }, 1000);
 
+  // ── Debug Tab Functions ───────────────────────────────────────────────────
+  const consoleLogs = [];
+  let consoleFilter = 'all';
+
+  function addConsoleLog(msg) {
+    consoleLogs.unshift({ message: msg.message, level: msg.level || 'log', time: new Date().toLocaleTimeString() });
+    if (consoleLogs.length > 500) consoleLogs.pop();
+    renderConsole();
+  }
+
+  function renderConsole() {
+    const filtered = consoleFilter === 'all' ? consoleLogs : consoleLogs.filter(l => l.level === consoleFilter);
+    const colors = { error: '#ff453a', warn: '#ffd60a', log: '#e2e8f0' };
+    document.getElementById('consoleLog').innerHTML = filtered.slice(0, 100).map(l => `
+      <div style="padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);color:${colors[l.level]||'#e2e8f0'}">
+        <span style="color:#8e8e93;margin-right:8px">${l.time}</span>${escHtml(l.message)}
+      </div>`).join('');
+  }
+
+  function filterConsole(level) {
+    consoleFilter = level;
+    ['all','error','warn'].forEach(l => {
+      const el = document.getElementById(`cf-${l}`);
+      if (el) { el.style.background = l === level ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.06)'; el.style.color = l === level ? '#fff' : '#8e8e93'; }
+    });
+    renderConsole();
+  }
+
+  function clearConsole() { consoleLogs.length = 0; document.getElementById('consoleLog').innerHTML = ''; }
+
+  let udData = {};
+  function updateUserDefaults(data) {
+    udData = data || {};
+    renderUserDefaults();
+  }
+
+  function renderUserDefaults() {
+    const q = (document.getElementById('udSearch')?.value || '').toLowerCase();
+    const entries = Object.entries(udData).filter(([k,v]) => !q || k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q));
+    document.getElementById('udBody').innerHTML = entries.map(([k,v]) => `
+      <tr>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:monospace;font-size:11px;color:#0a84ff">${k}</td>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px;color:#e2e8f0;word-break:break-all">${escHtml(String(v))}</td>
+      </tr>`).join('');
+  }
+
+  function updateVCStack(stack) {
+    if (!stack || !stack.length) return;
+    document.getElementById('vcStack').innerHTML = stack.map(line => {
+      const depth = (line.match(/^(\s*)/)?.[1]?.length || 0) / 2;
+      const name = line.trim();
+      const color = depth === 0 ? '#fff' : depth === 1 ? '#0a84ff' : '#30d158';
+      return `<div style="color:${color};padding-left:${depth*16}px">${depth > 0 ? '└ ' : ''}${name}</div>`;
+    }).join('');
+  }
+
+  function addNotifLog(name) {
+    const el = document.getElementById('notifLog');
+    if (!el) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);color:#94a3b8';
+    div.innerHTML = `<span style="color:#8e8e93;margin-right:6px">${new Date().toLocaleTimeString()}</span>${escHtml(name)}`;
+    el.insertBefore(div, el.firstChild);
+    if (el.children.length > 100) el.removeChild(el.lastChild);
+  }
+
   // ── Keychain ──────────────────────────────────────────────────────────────
   function updateKeychain(items) {
     if (!items || items.length === 0) {
@@ -1284,18 +1410,67 @@
   // ── Memory Leaks ──────────────────────────────────────────────────────────
   const leaks = [];
   function addLeak(msg) {
-    leaks.unshift({ name: msg.vcName, retainedFor: msg.retainedFor, time: new Date().toLocaleTimeString() });
-    document.getElementById('leakCount').textContent = `${leaks.length} leak${leaks.length !== 1 ? 's' : ''}`;
-    document.getElementById('leakList').innerHTML = leaks.map(l => `
-      <div style="background:rgba(255,69,58,.08);border:1px solid rgba(255,69,58,.2);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <div style="font-size:12px;font-weight:600;color:#ff453a;font-family:monospace">${l.name}</div>
-          <div style="font-size:10px;color:#8e8e93;margin-top:2px">Retained ${l.retainedFor}s after dismiss · ${l.time}</div>
+    leaks.unshift({
+      name: msg.vcName,
+      retainedFor: msg.retainedFor,
+      memory: msg.memoryAtLeak,
+      screen: msg.screen,
+      suggestion: msg.suggestion,
+      time: new Date().toLocaleTimeString()
+    });
+
+    // Update crash tab badge and stats
+    document.getElementById('crashTotal').textContent = crashes.length + leaks.length;
+    if (document.getElementById('crashLeaks')) document.getElementById('crashLeaks').textContent = leaks.length;
+    renderLeaksInCrashTab();
+
+    // Event log
+    addEventEntry('red', new Date().toLocaleTimeString(), 'MEMORY_LEAK',
+      `${msg.vcName} retained ${msg.retainedFor}s — ${msg.suggestion || ''}`);
+  }
+
+  function renderLeaksInCrashTab() {
+    const leakSection = document.getElementById('leakCrashSection');
+    if (!leakSection) return;
+
+    if (leaks.length === 0) {
+      leakSection.innerHTML = '';
+      return;
+    }
+
+    leakSection.innerHTML = `
+      <div style="margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:#ffd60a;margin-bottom:8px">
+          ⚠️ Memory Leaks (${leaks.length})
         </div>
-        <div style="font-size:20px">🔴</div>
-      </div>`).join('');
-    // Also add to event log
-    addEventEntry('red', new Date().toLocaleTimeString(), 'MEMORY_LEAK', `${msg.vcName} retained ${msg.retainedFor}s after dismiss`);
+        ${leaks.map(l => `
+          <div style="background:rgba(255,214,10,.06);border:1px solid rgba(255,214,10,.2);border-radius:10px;padding:14px;margin-bottom:8px;cursor:pointer"
+               onclick="this.querySelector('.leak-detail').style.display=this.querySelector('.leak-detail').style.display==='none'?'block':'none'">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <span style="color:#ffd60a;font-size:13px;font-weight:600;font-family:monospace">⚠️ ${l.name}</span>
+                <span style="background:rgba(255,214,10,.15);color:#ffd60a;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:8px">LEAK</span>
+              </div>
+              <span style="color:#8e8e93;font-size:11px;font-family:monospace">${l.time}</span>
+            </div>
+            <div style="color:#8e8e93;font-size:12px;margin-top:4px">
+              Retained <strong style="color:#ffd60a">${l.retainedFor}s</strong> after dismiss
+              ${l.memory ? ` · Memory: <strong style="color:#fff">${l.memory.toFixed(1)}MB</strong>` : ''}
+              ${l.screen ? ` · Screen: <strong style="color:#fff">${l.screen}</strong>` : ''}
+            </div>
+            <div class="leak-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,214,10,.15)">
+              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">How to fix</div>
+              <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-size:11px;color:#e2e8f0">${l.suggestion || 'Check for retain cycles in delegates, closures, or NotificationCenter observers'}</div>
+              <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-top:10px;margin-bottom:6px">Common causes</div>
+              <div style="font-size:11px;color:#8e8e93;line-height:1.8">
+                • Strong delegate: use <code style="color:#ffd60a">weak var delegate</code><br>
+                • Closure capture: use <code style="color:#ffd60a">[weak self]</code><br>
+                • NotificationCenter: call <code style="color:#ffd60a">removeObserver</code> in deinit<br>
+                • Timer: invalidate in deinit
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>`;
   }
 
   // ── Custom Actions ────────────────────────────────────────────────────────
@@ -1313,6 +1488,88 @@
     ws.send(JSON.stringify({ type: 'runAction', title }));
   }
 
+
+  // ── Session Clear ─────────────────────────────────────────────────────────
+  function clearSession() {
+    memH.length = 0; cpuH.length = 0;
+    screenRows.length = 0; events.length = 0;
+    netCalls.length = 0; crashes.length = 0;
+    leaks.length = 0; wsMessages.length = 0;
+    Object.keys(taps).forEach(k => delete taps[k]);
+    userFlowList.length = 0;
+    Object.keys(screenDwells).forEach(k => delete screenDwells[k]);
+    peakMem = 0; screenCount = 0; sessionStart = Date.now();
+
+    memChart.data.datasets[0].data = Array(MAX).fill(null);
+    cpuChart.data.datasets[0].data = Array(MAX).fill(null);
+    memChart.update(); cpuChart.update();
+
+    document.getElementById('screenTableBody').innerHTML = '';
+    document.getElementById('eventList').innerHTML = '';
+    document.getElementById('netTableBody').innerHTML = '';
+    document.getElementById('crashList').innerHTML = '<div class="crash-empty"><div style="font-size:48px;margin-bottom:12px">✓</div><div style="font-size:16px;font-weight:600;color:#30d158;margin-bottom:6px">No Crashes Detected</div><div>Your app is running healthy</div></div>';
+    if (document.getElementById('leakCrashSection')) document.getElementById('leakCrashSection').innerHTML = '';
+    if (document.getElementById('consoleLog')) document.getElementById('consoleLog').innerHTML = '';
+    if (document.getElementById('vcStack')) document.getElementById('vcStack').innerHTML = '';
+    if (document.getElementById('udBody')) document.getElementById('udBody').innerHTML = '';
+    if (document.getElementById('notifLog')) document.getElementById('notifLog').innerHTML = '';
+    if (document.getElementById('wsLog')) document.getElementById('wsLog').innerHTML = '';
+    if (document.getElementById('userFlow')) document.getElementById('userFlow').innerHTML = '';
+
+    ['crashTotal','crashExc','crashSig','crashANR','crashLeaks','netTotal','totalTaps','uniqueScreens'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '0';
+    });
+
+    document.getElementById('liveText').textContent = 'New session ●';
+    console.log('🔄 Session cleared');
+  }
+
+  function toggleNetDetail(id) {
+    const row = document.getElementById(`net-detail-${id}`);
+    if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+  }
+
+  function tryFormatJSON(str) {
+    try { return JSON.stringify(JSON.parse(str), null, 2); } catch { return str; }
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── APNS + Thread Violations + Lifecycle ──────────────────────────────────
+  function handleAPNS(msg) {
+    const el = document.getElementById('apnsToken');
+    if (el) {
+      el.textContent = msg.token;
+      el.style.display = 'block';
+    }
+    addEventEntry('blue', new Date().toLocaleTimeString(), 'APNS_TOKEN', msg.token.substring(0,20) + '...');
+  }
+
+  const threadViolations = [];
+  function handleThreadViolation(msg) {
+    threadViolations.unshift({ method: msg.method, screen: msg.screen, stack: msg.stackTrace, time: new Date().toLocaleTimeString() });
+    addEventEntry('red', new Date().toLocaleTimeString(), 'THREAD_VIOLATION', `${msg.method} on background thread — ${msg.screen}`);
+    renderThreadViolations();
+  }
+
+  function renderThreadViolations() {
+    const el = document.getElementById('threadViolationList');
+    if (!el) return;
+    el.innerHTML = threadViolations.map(v => `
+      <div style="background:rgba(255,69,58,.06);border:1px solid rgba(255,69,58,.2);border-radius:8px;padding:10px 12px;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:600;color:#ff453a;font-family:monospace">${v.method}</div>
+        <div style="font-size:10px;color:#8e8e93;margin-top:2px">Screen: ${v.screen} · ${v.time}</div>
+        ${v.stack ? `<pre style="font-size:9px;color:#64748b;margin-top:6px;overflow-x:auto">${v.stack}</pre>` : ''}
+      </div>`).join('');
+  }
+
+  function handleLifecycle(msg) {
+    const icons = { foreground:'🟢', background:'🟡', terminate:'🔴', memoryWarning:'⚠️' };
+    addEventEntry('gray', new Date().toLocaleTimeString(), `APP_${msg.event.toUpperCase()}`, `${icons[msg.event]||''} App ${msg.event}`);
+  }
 
   function switchTab(name) {
     document.querySelectorAll('.nav-tab').forEach((t,i) => t.classList.toggle('active', ['overview','network','crashes','analytics'][i]===name));
