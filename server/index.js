@@ -22,6 +22,13 @@ wss.on('connection', (ws, req) => {
     iosClient = ws;
     console.log('📱 iOS app connected');
 
+    // Broadcast session clear to all dashboards — new session starting
+    dashboardClients.forEach(client => {
+      if (client.readyState === 1) {
+        client.send(JSON.stringify({ type: 'session:clear' }));
+      }
+    });
+
     ws.on('message', (data) => {
       try {
         const metric = JSON.parse(data);
@@ -44,6 +51,16 @@ wss.on('connection', (ws, req) => {
   } else {
     dashboardClients.add(ws);
     console.log(`🖥️  Dashboard connected (${dashboardClients.size} total)`);
+
+    // Handle messages from dashboard (e.g. runAction)
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'runAction' && iosClient?.readyState === 1) {
+          iosClient.send(JSON.stringify(msg));
+        }
+      } catch(e) {}
+    });
 
     ws.on('close', () => {
       dashboardClients.delete(ws);
