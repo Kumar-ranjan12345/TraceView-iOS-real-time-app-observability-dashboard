@@ -1101,7 +1101,7 @@
             <div id="npanel-${c.id}-request" style="padding:14px;display:none">
               ${c.requestBody ? `
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                  <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Request Body</div>
+                  <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Request Body <span style="color:#0a84ff;font-weight:400">(sent by app)</span></div>
                   <button onclick="navigator.clipboard.writeText(netCalls.find(x=>x.id===${c.id})?.requestBody||'')" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:2px 8px;font-size:10px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Copy</button>
                 </div>
                 <pre style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-size:10px;font-family:monospace;color:#e2e8f0;overflow-y:auto;overflow-x:hidden;max-height:300px;white-space:pre-wrap;word-break:break-word;margin:0 0 12px">${escHtml(tryFormatJSON(c.requestBody))}</pre>
@@ -1116,12 +1116,12 @@
             <!-- Response tab -->
             <div id="npanel-${c.id}-response" style="padding:14px;display:none">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Response Body</div>
+                <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px">Response Body <span style="color:#30d158;font-weight:400">(received from server)</span></div>
                 ${c.responseBody ? `<button onclick="navigator.clipboard.writeText(netCalls.find(x=>x.id===${c.id})?.responseBody||'')" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:2px 8px;font-size:10px;color:#94a3b8;cursor:pointer;font-family:'Inter',sans-serif">Copy</button>` : ''}
               </div>
               ${c.responseBody
                 ? `<pre style="background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-size:10px;font-family:monospace;color:#e2e8f0;overflow-y:auto;overflow-x:hidden;max-height:300px;white-space:pre-wrap;word-break:break-word;margin:0 0 12px">${escHtml(tryFormatJSON(c.responseBody))}</pre>`
-                : '<div style="color:#8e8e93;font-size:11px;font-style:italic;margin-bottom:12px">No response body</div>'}
+                : '<div style="color:#8e8e93;font-size:11px;font-style:italic;margin-bottom:12px">No response body (encrypted or empty)</div>'}
               ${c.responseHeaders && Object.keys(c.responseHeaders).length ? `
                 <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Response Headers</div>
                 <div style="background:rgba(0,0,0,.2);border-radius:6px;padding:10px;font-family:monospace;font-size:10px;color:#94a3b8;max-height:200px;overflow-y:auto;word-break:break-word">

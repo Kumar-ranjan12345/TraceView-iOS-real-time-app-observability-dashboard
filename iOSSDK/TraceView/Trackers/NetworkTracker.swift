@@ -28,6 +28,28 @@ class TVURLProtocol: URLProtocol {
         URLProtocol.setProperty(true, forKey: "TVHandled", in: mutableRequest)
         startTime = Date()
 
+        // Read request body BEFORE creating the data task (stream gets consumed after)
+        var requestBody = ""
+        if let body = request.httpBody, let str = String(data: body, encoding: .utf8) {
+            requestBody = String(str.prefix(4096))
+        } else if let stream = request.httpBodyStream {
+            stream.open()
+            var data = Data()
+            let bufferSize = 4096
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+            while stream.hasBytesAvailable {
+                let read = stream.read(buffer, maxLength: bufferSize)
+                if read > 0 { data.append(buffer, count: read) } else { break }
+            }
+            buffer.deallocate()
+            stream.close()
+            if let str = String(data: data, encoding: .utf8) {
+                requestBody = String(str.prefix(4096))
+            }
+            // Re-set the body so the actual request still works
+            mutableRequest.httpBody = data
+        }
+
         let session = URLSession(configuration: .default)
         dataTask = session.dataTask(with: mutableRequest as URLRequest) { [weak self] data, response, error in
             guard let self = self else { return }
@@ -39,12 +61,6 @@ class TVURLProtocol: URLProtocol {
             let method = self.request.httpMethod ?? "GET"
             let reqHeaders = self.request.allHTTPHeaderFields ?? [:]
             let action = reqHeaders["grpc-method"] ?? reqHeaders["x-action"] ?? reqHeaders["x-grpc-action"] ?? ""
-
-            // Capture request body to extract action
-            var requestBody = ""
-            if let body = self.request.httpBody, let str = String(data: body, encoding: .utf8) {
-                requestBody = String(str.prefix(2048))
-            }
 
             // Response headers
             let resHeaders = (response as? HTTPURLResponse)?.allHeaderFields
