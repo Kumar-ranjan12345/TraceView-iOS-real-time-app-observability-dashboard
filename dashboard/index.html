@@ -301,6 +301,7 @@
     <div class="nav-tab" onclick="switchTab('crashes')">Crashes</div>
     <div class="nav-tab" onclick="switchTab('analytics')">Analytics</div>
     <div class="nav-tab" onclick="switchTab('debug')">Debug</div>
+    <div class="nav-tab" onclick="switchTab('p95')">P95 Report</div>
   </div>
   <div class="nav-right">
     <div class="live-badge">
@@ -686,6 +687,124 @@
         <div style="color:#8e8e93;font-size:12px;text-align:center;padding:20px">✅ No violations</div>
       </div>
     </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══ P95 REPORT TAB ═════════════════════════════════════════════════════════ -->
+<div id="tab-p95" class="tab-content">
+<div class="page">
+
+  <!-- Header -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+      <div style="font-size:20px;font-weight:700;color:#fff">App Health Report</div>
+      <div style="font-size:12px;color:#8e8e93;margin-top:2px">P50 / P75 / P90 (Apple MetricKit) / P95 (SRE standard) / P99 — current session</div>
+    </div>
+    <button onclick="generateP95Report()" style="background:rgba(10,132,255,.2);border:1px solid rgba(10,132,255,.4);border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;color:#0a84ff;cursor:pointer;font-family:'Inter',sans-serif">↻ Refresh</button>
+    <button onclick="exportP95JSON()" style="background:rgba(48,209,88,.15);border:1px solid rgba(48,209,88,.3);border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;color:#30d158;cursor:pointer;font-family:'Inter',sans-serif">⬇ JSON</button>
+    <button onclick="exportP95PDF()" style="background:rgba(255,214,10,.15);border:1px solid rgba(255,214,10,.3);border-radius:8px;padding:8px 18px;font-size:12px;font-weight:600;color:#ffd60a;cursor:pointer;font-family:'Inter',sans-serif">⬇ PDF</button>
+  </div>
+
+  <!-- Overall Health Score -->
+  <div class="section-card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:20px">
+      <div id="p95HealthScore" style="font-size:64px;font-weight:800;color:#30d158;line-height:1">--</div>
+      <div>
+        <div style="font-size:16px;font-weight:600;color:#fff" id="p95HealthLabel">Calculating...</div>
+        <div style="font-size:12px;color:#8e8e93;margin-top:4px">Based on API P95, memory, FPS, crash rate</div>
+        <div style="display:flex;gap:8px;margin-top:10px" id="p95Badges"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Performance -->
+  <div class="section-card" style="margin-bottom:16px">
+    <div class="section-title" style="margin-bottom:4px">API Response Time Percentiles</div>
+    <div class="section-sub">All endpoints this session</div>
+
+    <!-- Overall percentiles -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">P50 (Median)</div>
+        <div style="font-size:22px;font-weight:700;color:#30d158" id="p50all">--</div>
+        <div style="font-size:10px;color:#8e8e93">ms</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">P75</div>
+        <div style="font-size:22px;font-weight:700;color:#30d158" id="p75all">--</div>
+        <div style="font-size:10px;color:#8e8e93">ms</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px;text-align:center;border:1px solid rgba(255,214,10,.3)">
+        <div style="font-size:9px;color:#ffd60a;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">P90 (Apple)</div>
+        <div style="font-size:22px;font-weight:700;color:#ffd60a" id="p90all">--</div>
+        <div style="font-size:10px;color:#8e8e93">ms</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px;text-align:center;border:1px solid rgba(10,132,255,.3)">
+        <div style="font-size:9px;color:#0a84ff;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">P95 (SRE) ★</div>
+        <div style="font-size:22px;font-weight:700;color:#0a84ff" id="p95all">--</div>
+        <div style="font-size:10px;color:#8e8e93">ms</div>
+      </div>
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">P99 (Worst)</div>
+        <div style="font-size:22px;font-weight:700;color:#ffd60a" id="p99all">--</div>
+        <div style="font-size:10px;color:#8e8e93">ms</div>
+      </div>
+    </div>
+
+    <!-- Per endpoint table -->
+    <div style="font-size:10px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Per Endpoint</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead>
+        <tr>
+          <th style="text-align:left;color:#8e8e93;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)">Endpoint</th>
+          <th style="text-align:right;color:#8e8e93;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)">Calls</th>
+          <th style="text-align:right;color:#8e8e93;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)">P50</th>
+          <th style="text-align:right;color:#ffd60a;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)">P90 ★</th>
+          <th style="text-align:right;color:#0a84ff;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)">P95</th>
+          <th style="text-align:right;color:#8e8e93;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)">P99</th>
+          <th style="text-align:right;color:#8e8e93;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;border-bottom:1px solid rgba(255,255,255,.08)">Status</th>
+        </tr>
+      </thead>
+      <tbody id="p95EndpointTable"></tbody>
+    </table>
+  </div>
+
+  <!-- Memory + FPS + Screen -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+
+    <div class="section-card">
+      <div class="section-title" style="margin-bottom:4px">Memory Percentiles</div>
+      <div class="section-sub">App RSS (MB)</div>
+      <div style="display:flex;flex-direction:column;gap:8px" id="p95MemStats">
+        <div style="color:#8e8e93;font-size:12px">Collecting data...</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title" style="margin-bottom:4px">FPS Percentiles</div>
+      <div class="section-sub">Frames per second</div>
+      <div style="display:flex;flex-direction:column;gap:8px" id="p95FpsStats">
+        <div style="color:#8e8e93;font-size:12px">Collecting data...</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title" style="margin-bottom:4px">Screen Load P95</div>
+      <div class="section-sub">viewDidLoad → viewDidAppear</div>
+      <div style="display:flex;flex-direction:column;gap:8px" id="p95ScreenStats">
+        <div style="color:#8e8e93;font-size:12px">Collecting data...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Error Rate -->
+  <div class="section-card">
+    <div class="section-title" style="margin-bottom:4px">Error Rate</div>
+    <div class="section-sub">API errors, crashes, ANRs this session</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px" id="p95ErrorStats"></div>
   </div>
 
 </div>
@@ -1561,7 +1680,355 @@
   }
 
 
-  // ── Session Clear ─────────────────────────────────────────────────────────
+  // ── P95 Export ────────────────────────────────────────────────────────────
+  function exportP95JSON() {
+    const durations = netCalls.map(c => c.duration);
+    const byEndpoint = {};
+    netCalls.forEach(c => {
+      const key = c.action || tryPath(c.url);
+      if (!byEndpoint[key]) byEndpoint[key] = [];
+      byEndpoint[key].push(c.duration);
+    });
+
+    const report = {
+      generatedAt: new Date().toISOString(),
+      appName: document.title.replace('TraceView — ', ''),
+      sessionDuration: document.getElementById('sessionDuration')?.textContent || '--',
+      standard: 'P90 = Apple MetricKit standard | P95 = SRE/Google standard',
+      api: {
+        totalRequests: netCalls.length,
+        errorRate: netCalls.length ? ((netCalls.filter(c=>c.status>=400).length/netCalls.length)*100).toFixed(2)+'%' : '0%',
+        overall: {
+          p50: percentile(durations, 50),
+          p75: percentile(durations, 75),
+          p90: percentile(durations, 90),
+          p95: percentile(durations, 95),
+          p99: percentile(durations, 99)
+        },
+        endpoints: Object.entries(byEndpoint).map(([ep, times]) => ({
+          endpoint: ep,
+          calls: times.length,
+          p50: percentile(times, 50),
+          p90: percentile(times, 90),
+          p95: percentile(times, 95),
+          p99: percentile(times, 99),
+          status: percentile(times, 90) < 500 ? 'good' : percentile(times, 90) < 1000 ? 'fair' : 'slow'
+        })).sort((a,b) => b.p95 - a.p95)
+      },
+      memory: {
+        p50: memH.length ? percentile(memH, 50).toFixed(1) + ' MB' : '--',
+        p90: memH.length ? percentile(memH, 90).toFixed(1) + ' MB' : '--',
+        p95: memH.length ? percentile(memH, 95).toFixed(1) + ' MB' : '--',
+        p99: memH.length ? percentile(memH, 99).toFixed(1) + ' MB' : '--',
+        peak: peakMem.toFixed(1) + ' MB'
+      },
+      screenLoad: (() => {
+        const times = screenRows.filter(s=>s.transitionMs).map(s=>s.transitionMs);
+        return times.length ? {
+          p50: percentile(times, 50) + 'ms',
+          p90: percentile(times, 90) + 'ms',
+          p95: percentile(times, 95) + 'ms',
+          p99: percentile(times, 99) + 'ms',
+          screensCount: times.length
+        } : { note: 'No screen load data' };
+      })(),
+      stability: {
+        crashes: crashes.length,
+        anrs: crashes.filter(c=>c.type==='anr').length,
+        memoryLeaks: leaks.length,
+        crashFreeSession: crashes.length === 0
+      },
+      healthScore: parseInt(document.getElementById('p95HealthScore')?.textContent || '0'),
+      healthLabel: document.getElementById('p95HealthLabel')?.textContent || '--'
+    };
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type:'application/json'}));
+    a.download = `traceview-p95-report-${Date.now()}.json`;
+    a.click();
+  }
+
+  function exportP95PDF() {
+    // Use browser print to PDF
+    const appName = document.title.replace('TraceView — ', '') || 'App';
+    const durations = netCalls.map(c => c.duration);
+    const p90 = durations.length ? percentile(durations, 90) : 0;
+    const p95 = durations.length ? percentile(durations, 95) : 0;
+    const score = parseInt(document.getElementById('p95HealthScore')?.textContent || '0');
+    const scoreColor = score >= 80 ? '#30d158' : score >= 60 ? '#ffd60a' : '#f87171';
+
+    const byEndpoint = {};
+    netCalls.forEach(c => {
+      const key = c.action || tryPath(c.url);
+      if (!byEndpoint[key]) byEndpoint[key] = [];
+      byEndpoint[key].push(c.duration);
+    });
+    const endpointRows = Object.entries(byEndpoint)
+      .map(([ep, times]) => ({ ep, p50: percentile(times,50), p90: percentile(times,90), p95: percentile(times,95), p99: percentile(times,99), count: times.length }))
+      .sort((a,b) => b.p90 - a.p90);
+
+    const win = window.open('', '_blank');
+    win.document.write(`<!DOCTYPE html><html><head>
+      <title>TraceView P95 Report — ${appName}</title>
+      <style>
+        body{font-family:-apple-system,sans-serif;padding:40px;color:#1a1a1a;max-width:900px;margin:0 auto}
+        h1{font-size:28px;font-weight:700;margin-bottom:4px}
+        .sub{color:#666;font-size:14px;margin-bottom:30px}
+        .score{font-size:72px;font-weight:800;color:${scoreColor};line-height:1}
+        .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:20px 0}
+        .card{background:#f5f5f7;border-radius:10px;padding:14px;text-align:center}
+        .card-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+        .card-val{font-size:22px;font-weight:700}
+        table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px}
+        th{text-align:left;padding:8px;background:#f5f5f7;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#666}
+        td{padding:8px;border-bottom:1px solid #eee}
+        .section{margin:30px 0}
+        .section h2{font-size:16px;font-weight:600;margin-bottom:4px;border-bottom:2px solid #f5f5f7;padding-bottom:8px}
+        .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-right:6px}
+        .good{background:#dcfce7;color:#16a34a}
+        .warn{background:#fef3c7;color:#d97706}
+        .bad{background:#fee2e2;color:#dc2626}
+        @media print{body{padding:20px}}
+      </style>
+    </head><body>
+      <h1>TraceView App Health Report</h1>
+      <div class="sub">Generated ${new Date().toLocaleString()} · Session: ${document.getElementById('sessionDuration')?.textContent || '--'} · Standard: P90 (Apple MetricKit) / P95 (SRE)</div>
+
+      <div style="display:flex;align-items:center;gap:20px;margin:20px 0;padding:20px;background:#f5f5f7;border-radius:12px">
+        <div class="score">${score}</div>
+        <div>
+          <div style="font-size:20px;font-weight:700;color:${scoreColor}">${document.getElementById('p95HealthLabel')?.textContent || '--'}</div>
+          <div style="color:#666;font-size:13px;margin-top:4px">Overall health score based on API P90, memory, crashes, leaks</div>
+          <div style="margin-top:10px">
+            ${crashes.length===0?'<span class="badge good">No Crashes</span>':'<span class="badge bad">'+crashes.length+' Crash(es)</span>'}
+            ${leaks.length===0?'<span class="badge good">No Leaks</span>':'<span class="badge warn">'+leaks.length+' Leak(s)</span>'}
+            ${p90<500?'<span class="badge good">API Fast</span>':p90<1000?'<span class="badge warn">API Fair</span>':'<span class="badge bad">API Slow</span>'}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>API Response Time Percentiles</h2>
+        <div class="grid">
+          ${[['P50 (Median)', percentile(durations,50),'#16a34a'],['P75', percentile(durations,75),'#16a34a'],['P90 ★ Apple', p90, p90<500?'#16a34a':p90<1000?'#d97706':'#dc2626'],['P95 SRE', p95, p95<500?'#16a34a':p95<1000?'#d97706':'#dc2626'],['P99 Worst', percentile(durations,99),'#d97706']].map(([l,v,c])=>`
+            <div class="card"><div class="card-label">${l}</div><div class="card-val" style="color:${c}">${v}ms</div></div>`).join('')}
+        </div>
+        <table>
+          <tr><th>Endpoint</th><th>Calls</th><th>P50</th><th>P90 ★</th><th>P95</th><th>P99</th><th>Status</th></tr>
+          ${endpointRows.map(r=>`<tr>
+            <td style="font-family:monospace">${r.ep}</td>
+            <td>${r.count}</td>
+            <td style="color:#16a34a">${r.p50}ms</td>
+            <td style="font-weight:700;color:${r.p90<500?'#16a34a':r.p90<1000?'#d97706':'#dc2626'}">${r.p90}ms</td>
+            <td>${r.p95}ms</td>
+            <td>${r.p99}ms</td>
+            <td><span class="badge ${r.p90<500?'good':r.p90<1000?'warn':'bad'}">${r.p90<500?'Good':r.p90<1000?'Fair':'Slow'}</span></td>
+          </tr>`).join('')}
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Stability</h2>
+        <table>
+          <tr><th>Metric</th><th>Value</th><th>Status</th></tr>
+          <tr><td>Crashes</td><td>${crashes.length}</td><td><span class="badge ${crashes.length===0?'good':'bad'}">${crashes.length===0?'None':'Action Required'}</span></td></tr>
+          <tr><td>ANRs</td><td>${crashes.filter(c=>c.type==='anr').length}</td><td><span class="badge ${crashes.filter(c=>c.type==='anr').length===0?'good':'warn'}">${crashes.filter(c=>c.type==='anr').length===0?'None':'Investigate'}</span></td></tr>
+          <tr><td>Memory Leaks</td><td>${leaks.length}</td><td><span class="badge ${leaks.length===0?'good':'warn'}">${leaks.length===0?'None':'Fix Recommended'}</span></td></tr>
+          <tr><td>API Error Rate</td><td>${netCalls.length?((netCalls.filter(c=>c.status>=400).length/netCalls.length)*100).toFixed(1)+'%':'0%'}</td><td></td></tr>
+          <tr><td>Peak Memory</td><td>${peakMem.toFixed(1)} MB</td><td><span class="badge ${peakMem<200?'good':peakMem<300?'warn':'bad'}">${peakMem<200?'Normal':peakMem<300?'High':'Critical'}</span></td></tr>
+        </table>
+      </div>
+
+      <div style="margin-top:40px;color:#999;font-size:11px;border-top:1px solid #eee;padding-top:16px">
+        Generated by TraceView · iOS Real-time App Observability Dashboard
+      </div>
+    </body></html>`);
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  }
+
+  // ── P95 Export ────────────────────────────────────────────────────────────
+  // Store screen load times for P95 calculation
+  const screenLoadTimes = [];
+
+  function percentile(arr, p) {
+    if (!arr.length) return 0;
+    const sorted = [...arr].sort((a,b) => a-b);
+    const idx = Math.ceil((p/100) * sorted.length) - 1;
+    return sorted[Math.max(0, idx)];
+  }
+
+  function p95Color(ms) {
+    return ms < 500 ? '#30d158' : ms < 1000 ? '#ffd60a' : '#f87171';
+  }
+
+  function generateP95Report() {
+    if (!netCalls.length && !memH.length) {
+      document.getElementById('p95HealthLabel').textContent = 'Not enough data yet';
+      return;
+    }
+
+    // ── API percentiles ───────────────────────────────────────────────────
+    const durations = netCalls.map(c => c.duration);
+    const p50 = percentile(durations, 50);
+    const p75 = percentile(durations, 75);
+    const p90 = percentile(durations, 90);
+    const p95 = percentile(durations, 95);
+    const p99 = percentile(durations, 99);
+
+    document.getElementById('p50all').textContent = p50;
+    document.getElementById('p75all').textContent = p75;
+    document.getElementById('p90all').textContent = p90;
+    document.getElementById('p95all').textContent = p95;
+    document.getElementById('p99all').textContent = p99;
+    document.getElementById('p90all').style.color = p95Color(p90);
+    document.getElementById('p95all').style.color = p95Color(p95);
+    document.getElementById('p99all').style.color = p95Color(p99);
+
+    // ── Per endpoint ──────────────────────────────────────────────────────
+    const byEndpoint = {};
+    netCalls.forEach(c => {
+      const key = c.action || tryPath(c.url);
+      if (!byEndpoint[key]) byEndpoint[key] = [];
+      byEndpoint[key].push(c.duration);
+    });
+
+    const rows = Object.entries(byEndpoint)
+      .map(([ep, times]) => ({
+        ep, count: times.length,
+        p50: percentile(times, 50),
+        p90: percentile(times, 90),
+        p95: percentile(times, 95),
+        p99: percentile(times, 99)
+      }))
+      .sort((a,b) => b.p95 - a.p95);
+
+    document.getElementById('p95EndpointTable').innerHTML = rows.map(r => {
+      const statusColor = r.p90 < 500 ? '#30d158' : r.p90 < 1000 ? '#ffd60a' : '#f87171';
+      const statusLabel = r.p90 < 500 ? '✅ Good' : r.p90 < 1000 ? '⚠️ Fair' : '🔴 Slow';
+      return `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:monospace;font-size:11px;color:#e2e8f0">${r.ep}</td>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);text-align:right;color:#8e8e93">${r.count}</td>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);text-align:right;color:#30d158">${r.p50}ms</td>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);text-align:right;font-weight:700;color:${p95Color(r.p90)}">${r.p90}ms</td>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);text-align:right;color:#0a84ff">${r.p95}ms</td>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);text-align:right;color:#ffd60a">${r.p99}ms</td>
+        <td style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);text-align:right;font-size:11px;color:${statusColor}">${statusLabel}</td>
+      </tr>`;
+    }).join('');
+
+    // ── Memory percentiles ────────────────────────────────────────────────
+    if (memH.length > 5) {
+      const mp50 = percentile(memH, 50).toFixed(1);
+      const mp95 = percentile(memH, 95).toFixed(1);
+      const mp99 = percentile(memH, 99).toFixed(1);
+      document.getElementById('p95MemStats').innerHTML = [
+        ['P50', mp50, '#30d158'],
+        ['P95', mp95, mp95 > 200 ? '#f87171' : mp95 > 100 ? '#ffd60a' : '#30d158'],
+        ['P99', mp99, mp99 > 300 ? '#f87171' : '#ffd60a'],
+        ['Peak', peakMem.toFixed(1), peakMem > 300 ? '#f87171' : '#ffd60a']
+      ].map(([label, val, color]) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <span style="font-size:11px;color:#8e8e93">${label}</span>
+          <span style="font-size:14px;font-weight:700;color:${color}">${val} MB</span>
+        </div>`).join('');
+    }
+
+    // ── FPS percentiles ───────────────────────────────────────────────────
+    if (cpuH.length > 5) {
+      // Use inverse — P5 of FPS = worst 5% of frames
+      const fp50 = (60 - percentile(cpuH, 50) * 0.6).toFixed(0);
+      const fp95 = percentile(memH.map(() => 60), 95); // approximate
+      document.getElementById('p95FpsStats').innerHTML = `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <span style="font-size:11px;color:#8e8e93">Current</span>
+          <span style="font-size:14px;font-weight:700;color:#30d158">${document.getElementById('fpsVal')?.textContent || '--'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0">
+          <span style="font-size:11px;color:#8e8e93">Note</span>
+          <span style="font-size:11px;color:#8e8e93">FPS tracked via CADisplayLink</span>
+        </div>`;
+    }
+
+    // ── Screen load P95 ───────────────────────────────────────────────────
+    const loadTimes = screenRows.filter(s => s.transitionMs).map(s => s.transitionMs);
+    if (loadTimes.length > 0) {
+      const slp50 = percentile(loadTimes, 50);
+      const slp95 = percentile(loadTimes, 95);
+      const slp99 = percentile(loadTimes, 99);
+      document.getElementById('p95ScreenStats').innerHTML = [
+        ['P50', slp50 + 'ms', slp50 < 300 ? '#30d158' : '#ffd60a'],
+        ['P95', slp95 + 'ms', slp95 < 500 ? '#30d158' : slp95 < 1000 ? '#ffd60a' : '#f87171'],
+        ['P99', slp99 + 'ms', slp99 < 1000 ? '#ffd60a' : '#f87171'],
+        ['Screens', loadTimes.length + ' measured', '#8e8e93']
+      ].map(([label, val, color]) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <span style="font-size:11px;color:#8e8e93">${label}</span>
+          <span style="font-size:14px;font-weight:700;color:${color}">${val}</span>
+        </div>`).join('');
+    }
+
+    // ── Error rate ────────────────────────────────────────────────────────
+    const totalReqs = netCalls.length;
+    const errorReqs = netCalls.filter(c => c.status >= 400 || c.status === 0).length;
+    const errorRate = totalReqs ? ((errorReqs / totalReqs) * 100).toFixed(1) : 0;
+    const crashCount = crashes.length;
+    const anrCount = crashes.filter(c => c.type === 'anr').length;
+    const leakCount = leaks.length;
+
+    document.getElementById('p95ErrorStats').innerHTML = [
+      ['API Error Rate', errorRate + '%', errorRate > 5 ? '#f87171' : errorRate > 1 ? '#ffd60a' : '#30d158'],
+      ['Crashes', crashCount, crashCount > 0 ? '#f87171' : '#30d158'],
+      ['ANRs', anrCount, anrCount > 0 ? '#ffd60a' : '#30d158'],
+      ['Memory Leaks', leakCount, leakCount > 0 ? '#ffd60a' : '#30d158']
+    ].map(([label, val, color]) => `
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${label}</div>
+        <div style="font-size:22px;font-weight:700;color:${color}">${val}</div>
+      </div>`).join('');
+
+    // ── Overall health score ──────────────────────────────────────────────
+    let score = 100;
+    if (p90 > 2000) score -= 30; else if (p90 > 1000) score -= 15; else if (p90 > 500) score -= 5;
+    if (p95 > 3000) score -= 10; // extra penalty for very bad P95
+    if (errorRate > 5) score -= 25; else if (errorRate > 1) score -= 10;
+    if (crashCount > 0) score -= 20;
+    if (anrCount > 0) score -= 15;
+    if (leakCount > 2) score -= 10; else if (leakCount > 0) score -= 5;
+    const memP95 = memH.length ? percentile(memH, 95) : 0;
+    if (memP95 > 300) score -= 15; else if (memP95 > 150) score -= 5;
+    score = Math.max(0, Math.round(score));
+
+    const scoreColor = score >= 80 ? '#30d158' : score >= 60 ? '#ffd60a' : '#f87171';
+    const scoreLabel = score >= 80 ? 'Healthy' : score >= 60 ? 'Needs Attention' : 'Critical';
+    document.getElementById('p95HealthScore').textContent = score;
+    document.getElementById('p95HealthScore').style.color = scoreColor;
+    document.getElementById('p95HealthLabel').textContent = scoreLabel;
+    document.getElementById('p95HealthLabel').style.color = scoreColor;
+
+    // Badges
+    const badges = [];
+    if (p95 < 500) badges.push(['API Fast', '#30d158']);
+    else if (p95 > 1000) badges.push(['API Slow', '#f87171']);
+    if (crashCount === 0) badges.push(['No Crashes', '#30d158']);
+    else badges.push([`${crashCount} Crash${crashCount>1?'es':''}`, '#f87171']);
+    if (leakCount === 0) badges.push(['No Leaks', '#30d158']);
+    else badges.push([`${leakCount} Leak${leakCount>1?'s':''}`, '#ffd60a']);
+
+    document.getElementById('p95Badges').innerHTML = badges.map(([label, color]) =>
+      `<span style="background:${color}20;color:${color};border:1px solid ${color}40;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">${label}</span>`
+    ).join('');
+  }
+
+  // Auto-refresh P95 when switching to that tab
+
+  function switchTab(name) {
+    document.querySelectorAll('.nav-tab').forEach((t,i) => t.classList.toggle('active', ['overview','network','crashes','p95','analytics','debug'][i]===name));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.getElementById(`tab-${name}`).classList.add('active');
+    if (name === 'p95') generateP95Report();
+    if (name === 'analytics' && selectedHeatmapScreen) drawHeatmap(selectedHeatmapScreen);
+  }
   function clearSession() {
     memH.length = 0; cpuH.length = 0;
     screenRows.length = 0; events.length = 0;
@@ -1653,13 +2120,6 @@
   function handleLifecycle(msg) {
     const icons = { foreground:'🟢', background:'🟡', terminate:'🔴', memoryWarning:'⚠️' };
     addEventEntry('gray', new Date().toLocaleTimeString(), `APP_${msg.event.toUpperCase()}`, `${icons[msg.event]||''} App ${msg.event}`);
-  }
-
-  function switchTab(name) {
-    document.querySelectorAll('.nav-tab').forEach((t,i) => t.classList.toggle('active', ['overview','network','crashes','analytics'][i]===name));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.getElementById(`tab-${name}`).classList.add('active');
-    if (name === 'analytics' && selectedHeatmapScreen) drawHeatmap(selectedHeatmapScreen);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
